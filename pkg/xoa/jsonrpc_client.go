@@ -1,0 +1,620 @@
+package xoa
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"sync"
+	"time"
+
+	"github.com/gorilla/websocket"
+	"k8s.io/klog/v2"
+)
+
+// apiClient represents a Xen Orchestra WebSocket JSON-RPC client
+type jsonRPCClient struct {
+	baseURL   string
+	token     string
+	config    ClientConfig
+	conn      *websocket.Conn
+	mu        sync.Mutex
+	nextID    int64
+	callbacks map[int64]chan *jsonRPCResponse
+	ctx       context.Context
+	cancel    context.CancelFunc
+}
+
+// JSONRPCRequest represents a JSON-RPC request
+type jsonRPCRequest struct {
+	JSONRPC string `json:"jsonrpc"`
+	Method  string `json:"method"`
+	Params  any    `json:"params,omitempty"`
+	ID      int64  `json:"id"`
+}
+
+// JSONRPCResponse represents a JSON-RPC response
+type jsonRPCResponse struct {
+	JSONRPC string          `json:"jsonrpc"`
+	Result  json.RawMessage `json:"result,omitempty"`
+	Error   *jsonRPCError   `json:"error,omitempty"`
+	ID      int64           `json:"id"`
+}
+
+// JSONRPCError represents a JSON-RPC error
+type jsonRPCError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
+}
+
+// NewClient creates a new Xen Orchestra WebSocket JSON-RPC client
+func NewJSONRPCClient(config ClientConfig) (*jsonRPCClient, error) {
+	if config.BaseURL == "" {
+		return nil, fmt.Errorf("base URL is required: %w", ErrInvalidArgument)
+	}
+	if config.Token == "" {
+		return nil, fmt.Errorf("authentication token is required: %w", ErrInvalidArgument)
+	}
+
+	// Set default values
+	if config.Timeout == 0 {
+		config.Timeout = 30 * time.Second
+	}
+	if config.RetryCount == 0 {
+		config.RetryCount = 3
+	}
+	if config.RetryWait == 0 {
+		config.RetryWait = 1 * time.Second
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	client := &jsonRPCClient{
+		baseURL:   config.BaseURL,
+		token:     config.Token,
+		config:    config,
+		callbacks: make(map[int64]chan *jsonRPCResponse),
+		ctx:       ctx,
+		cancel:    cancel,
+	}
+
+	klog.V(4).Info("Xen Orchestra WebSocket JSON-RPC client created successfully")
+	return client, nil
+}
+
+// Connect establishes a WebSocket connection to the Xen Orchestra API
+func (c *jsonRPCClient) Connect(ctx context.Context) error {
+	c.mu.Lock()
+
+	if c.conn != nil {
+		c.mu.Unlock()
+		return ErrAlreadyConnected
+	}
+
+	// Convert HTTP URL to WebSocket URL
+	wsURL, err := c.getWebSocketURL()
+	if err != nil {
+		c.mu.Unlock()
+		return fmt.Errorf("%w: failed to create WebSocket URL: %w", ErrConnectionError, err)
+	}
+
+	klog.V(4).Infof("Connecting to WebSocket: %s", wsURL)
+
+	// Create WebSocket connection
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		c.mu.Unlock()
+		return fmt.Errorf("%w: failed to connect to WebSocket: %w", ErrConnectionError, err)
+	}
+
+	c.conn = conn
+
+	// Start message handler
+	go c.handleMessages()
+
+	c.mu.Unlock() // Unlock before authenticating to prevent deadlock
+
+	// Authenticate the session
+	if err := c.authenticate(ctx); err != nil {
+		c.Close() // Ensure connection is closed on auth failure
+		return fmt.Errorf("authentication failed: %w", err)
+	}
+
+	klog.V(4).Info("Successfully connected and authenticated to Xen Orchestra WebSocket API")
+	return nil
+}
+
+// Close closes the WebSocket connection
+func (c *jsonRPCClient) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.conn == nil {
+		return nil
+	}
+
+	c.cancel()
+	err := c.conn.Close()
+	c.conn = nil
+	return err
+}
+
+// Call makes a JSON-RPC call and waits for the response
+func (c *jsonRPCClient) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	c.mu.Lock()
+	if c.conn == nil {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("not connected: %w", ErrConnectionError)
+	}
+
+	id := c.nextID
+	c.nextID++
+	callback := make(chan *jsonRPCResponse, 1)
+	c.callbacks[id] = callback
+	c.mu.Unlock()
+
+	defer func() {
+		c.mu.Lock()
+		delete(c.callbacks, id)
+		c.mu.Unlock()
+	}()
+
+	// Create request
+	request := &jsonRPCRequest{
+		JSONRPC: "2.0",
+		Method:  method,
+		Params:  params,
+		ID:      id,
+	}
+
+	// Send request
+	if err := c.conn.WriteJSON(request); err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", ErrConnectionError)
+	}
+
+	// Wait for response
+	select {
+	case response := <-callback:
+		if response.Error != nil {
+			return nil, ConvertJSONRPCError(response.Error)
+		}
+		return response.Result, nil
+	case <-time.After(c.config.Timeout):
+		return nil, fmt.Errorf("request timeout: %w", ErrConnectionError)
+	case <-ctx.Done():
+		return nil, fmt.Errorf("context cancelled: %w", ErrConnectionError)
+	case <-c.ctx.Done():
+		return nil, fmt.Errorf("client closed: %w", ErrConnectionError)
+	}
+}
+
+// getWebSocketURL converts the HTTP URL to a WebSocket URL
+func (c *jsonRPCClient) getWebSocketURL() (string, error) {
+	parsedURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return "", err
+	}
+
+	// Convert to WebSocket scheme
+	if parsedURL.Scheme == "https" {
+		parsedURL.Scheme = "wss"
+	} else {
+		parsedURL.Scheme = "ws"
+	}
+
+	// Set the WebSocket endpoint path to /api/
+	parsedURL.Path = "/api/"
+
+	// Authentication is now done via cookie in the handshake.
+	return parsedURL.String(), nil
+}
+
+// authenticate performs authentication with the server
+func (c *jsonRPCClient) authenticate(ctx context.Context) error {
+	klog.V(4).Info("Authenticating session with token...")
+	_, err := c.call(ctx, "session.signInWithToken", map[string]any{
+		"token": c.token,
+	})
+	if err != nil {
+		return fmt.Errorf("session.signInWithToken failed: %w", err)
+	}
+
+	klog.V(4).Info("Session successfully authenticated")
+	return nil
+}
+
+// handleMessages handles incoming WebSocket messages
+func (c *jsonRPCClient) handleMessages() {
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		default:
+			_, message, err := c.conn.ReadMessage()
+			if err != nil {
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+					klog.Errorf("WebSocket read error: %v", err)
+				}
+				return
+			}
+
+			var response jsonRPCResponse
+			if err := json.Unmarshal(message, &response); err != nil {
+				klog.Errorf("Failed to unmarshal JSON-RPC response: %v", err)
+				continue
+			}
+
+			// Handle response
+			c.mu.Lock()
+			if callback, exists := c.callbacks[response.ID]; exists {
+				select {
+				case callback <- &response:
+				default:
+					klog.Warningf("Callback channel full for ID %d", response.ID)
+				}
+			} else {
+				klog.V(4).Infof("Received message for unknown ID %d: %s", response.ID, string(message))
+			}
+			c.mu.Unlock()
+		}
+	}
+}
+
+// GetVMs retrieves all virtual machines
+func (c *jsonRPCClient) GetVMs(ctx context.Context, filter map[string]any) ([]VM, error) {
+	if filter == nil {
+		filter = make(map[string]any)
+	}
+	filter["type"] = "VM"
+	result, err := c.call(ctx, "xo.getAllObjects", map[string]any{
+		"filter": filter,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get VMs: %w", err)
+	}
+
+	var vmMap map[string]VM
+	if err := json.Unmarshal(result, &vmMap); err != nil {
+		return nil, fmt.Errorf("%w: failed to unmarshal VMs: %w", ErrUnmarshalError, err)
+	}
+
+	vms := make([]VM, 0, len(vmMap))
+	for _, vm := range vmMap {
+		vms = append(vms, vm)
+	}
+
+	return vms, nil
+}
+
+func (c *jsonRPCClient) GetOneVM(ctx context.Context, filter map[string]any) (*VM, error) {
+	vms, err := c.GetVMs(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(vms) == 0 {
+		return nil, ErrObjectNotFound
+	}
+
+	if len(vms) > 1 {
+		return nil, fmt.Errorf("%w: multiple VMs found", ErrMultipleObjectsFound)
+	}
+
+	return &vms[0], nil
+}
+
+// GetVM retrieves a specific virtual machine by UUID
+func (c *jsonRPCClient) GetVMByUUID(ctx context.Context, uuid string) (*VM, error) {
+	return c.GetOneVM(ctx, map[string]any{
+		"uuid": uuid,
+	})
+}
+
+// GetVDIs retrieves all virtual disk images
+func (c *jsonRPCClient) GetVDIs(ctx context.Context, filter map[string]any) ([]VDI, error) {
+	if filter == nil {
+		filter = make(map[string]any)
+	}
+	filter["type"] = "VDI"
+	result, err := c.call(ctx, "xo.getAllObjects", map[string]any{
+		"filter": filter,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get VDIs: %w", err)
+	}
+
+	var vdiMap map[string]VDI
+	if err := json.Unmarshal(result, &vdiMap); err != nil {
+		return nil, fmt.Errorf("%w: failed to unmarshal VDIs: %w", ErrUnmarshalError, err)
+	}
+
+	vdis := make([]VDI, 0, len(vdiMap))
+	for _, vdi := range vdiMap {
+		vdis = append(vdis, vdi)
+	}
+
+	return vdis, nil
+}
+
+func (c *jsonRPCClient) GetOneVDI(ctx context.Context, filter map[string]any) (*VDI, error) {
+	vdis, err := c.GetVDIs(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(vdis) == 0 {
+		return nil, ErrObjectNotFound
+	}
+
+	if len(vdis) > 1 {
+		return nil, fmt.Errorf("%w: multiple VDIs found with filter %v", ErrMultipleObjectsFound, filter)
+	}
+
+	return &vdis[0], nil
+}
+
+func (c *jsonRPCClient) GetVDIByName(ctx context.Context, name string) (*VDI, error) {
+	return c.GetOneVDI(ctx, map[string]any{
+		"name_label": name,
+	})
+}
+
+// GetVDI retrieves a specific virtual disk image by UUID
+func (c *jsonRPCClient) GetVDIByUUID(ctx context.Context, uuid string) (*VDI, error) {
+	return c.GetOneVDI(ctx, map[string]any{
+		"uuid": uuid,
+	})
+}
+
+// GetSRs retrieves all storage repositories
+func (c *jsonRPCClient) GetSRs(ctx context.Context, filter map[string]any) ([]SR, error) {
+	if filter == nil {
+		filter = make(map[string]any)
+	}
+	filter["type"] = "SR"
+	result, err := c.call(ctx, "xo.getAllObjects", map[string]any{
+		"filter": filter,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SRs: %w", err)
+	}
+
+	var srMap map[string]SR
+	if err := json.Unmarshal(result, &srMap); err != nil {
+		return nil, fmt.Errorf("%w: failed to unmarshal SRs: %w", ErrUnmarshalError, err)
+	}
+
+	srs := make([]SR, 0, len(srMap))
+	for _, sr := range srMap {
+		srs = append(srs, sr)
+	}
+
+	return srs, nil
+}
+
+func (c *jsonRPCClient) GetOneSR(ctx context.Context, filter map[string]any) (*SR, error) {
+	srs, err := c.GetSRs(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(srs) == 0 {
+		return nil, ErrObjectNotFound
+	}
+
+	if len(srs) > 1 {
+		return nil, fmt.Errorf("%w: multiple SRs found with filter %v", ErrMultipleObjectsFound, filter)
+	}
+
+	return &srs[0], nil
+}
+
+// GetSR retrieves a specific storage repository by UUID
+func (c *jsonRPCClient) GetSRByUUID(ctx context.Context, uuid string) (*SR, error) {
+	return c.GetOneSR(ctx, map[string]any{
+		"uuid": uuid,
+	})
+}
+
+// CreateVDI creates a new virtual disk image
+func (c *jsonRPCClient) CreateVDI(ctx context.Context, nameLabel, srUUID string, size int64) (string, error) {
+	result, err := c.call(ctx, "disk.create", map[string]any{
+		"name": nameLabel,
+		"size": size,
+		"sr":   srUUID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create VDI: %w", err)
+	}
+
+	var vdiID string
+	if err := json.Unmarshal(result, &vdiID); err != nil {
+		return "", fmt.Errorf("%w: failed to unmarshal created VDI ID: %w", ErrUnmarshalError, err)
+	}
+
+	return vdiID, nil
+}
+
+func (c *jsonRPCClient) EditVDI(ctx context.Context, uuid string, nameLabel string, size int64) error {
+	// vdi.set id=<string> [name_label=<string>] [name_description=<string>] [size=<integer|string>] [cbt=<boolean>]
+
+	return ErrNotImplemented
+}
+
+func (c *jsonRPCClient) ResizeVDI(ctx context.Context, uuid string, size int64) error {
+	result, err := c.call(ctx, "vdi.set", map[string]any{
+		"id":   uuid,
+		"size": size,
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to resize VDI: %w", err)
+	}
+
+	klog.V(4).Infof("Resized VDI %s: %s", uuid, string(result))
+	return nil
+}
+
+// DeleteVDI deletes a virtual disk image
+func (c *jsonRPCClient) DeleteVDI(ctx context.Context, uuid string) error {
+	resp, err := c.call(ctx, "vdi.delete", map[string]any{
+		"id": uuid,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete VDI %s: %w", uuid, err)
+	}
+
+	klog.V(4).Infof("Deleted VDI %s: %s", uuid, string(resp))
+	return nil
+}
+
+// AttachVDI attaches a VDI (disk) to a VM
+func (c *jsonRPCClient) AttachVDI(ctx context.Context, vmUUID, vdiUUID string, mode string) (*bool, error) {
+	result, err := c.call(ctx, "vm.attachDisk", map[string]any{
+		"vm":   vmUUID,
+		"vdi":  vdiUUID,
+		"mode": mode, // "RW" or "RO"
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to attach VDI: %w", err)
+	}
+
+	// Try to unmarshal as bool (XO returns true on success)
+	var ok bool
+	if err := json.Unmarshal(result, &ok); err == nil {
+		return &ok, nil // Success, but no VBD ID returned
+	}
+	return nil, fmt.Errorf("unexpected response from vm.attachDisk: %s", string(result))
+}
+
+func (c *jsonRPCClient) AttachVDIAndWaitForDevice(ctx context.Context, vmUUID, vdiUUID string, mode string) (*VBD, error) {
+	ok, err := c.AttachVDI(ctx, vmUUID, vdiUUID, mode)
+	if err != nil {
+		return nil, err
+	}
+
+	if !*ok {
+		return nil, fmt.Errorf("failed to attach VDI")
+	}
+
+	// Poll every 200ms until VBD is created or context is cancelled
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("context cancelled while waiting for VBD: %w", ctx.Err())
+		case <-ticker.C:
+			// Check if VBD has been created
+			vbds, err := c.GetVBDsByVMAndVDI(ctx, vmUUID, vdiUUID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get VBDs: %w", err)
+			}
+
+			for _, vbd := range vbds {
+				if vbd.Attached && vbd.Device != "" {
+					return &vbd, nil
+				}
+			}
+
+			klog.V(4).Infof("VBD not yet created, continuing to poll...")
+		}
+	}
+}
+
+// GetVBDs retrieves all Virtual Block Devices (VBDs)
+func (c *jsonRPCClient) GetVBDs(ctx context.Context, filter map[string]any) ([]VBD, error) {
+	if filter == nil {
+		filter = make(map[string]any)
+	}
+	filter["type"] = "VBD"
+	result, err := c.call(ctx, "xo.getAllObjects", map[string]any{
+		"filter": filter,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get VBDs: %w", err)
+	}
+
+	var vbdMap map[string]VBD
+	if err := json.Unmarshal(result, &vbdMap); err != nil {
+		return nil, fmt.Errorf("%w: failed to unmarshal VBDs: %w", ErrUnmarshalError, err)
+	}
+
+	vbds := make([]VBD, 0, len(vbdMap))
+	for _, vbd := range vbdMap {
+		vbds = append(vbds, vbd)
+	}
+
+	return vbds, nil
+}
+
+func (c *jsonRPCClient) GetVBDsByVMAndVDI(ctx context.Context, vmUUID, vdiUUID string) ([]VBD, error) {
+	return c.GetVBDs(ctx, map[string]any{
+		"VM":  vmUUID,
+		"VDI": vdiUUID,
+	})
+}
+
+func (c *jsonRPCClient) GetOneVBD(ctx context.Context, filter map[string]any) (*VBD, error) {
+	vbds, err := c.GetVBDs(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(vbds) == 0 {
+		return nil, ErrObjectNotFound
+	}
+
+	if len(vbds) > 1 {
+		return nil, fmt.Errorf("%w: multiple VBDs found with filter %v", ErrMultipleObjectsFound, filter)
+	}
+
+	return &vbds[0], nil
+}
+
+func (c *jsonRPCClient) GetVBDByUUID(ctx context.Context, vbdUUID string) (*VBD, error) {
+	return c.GetOneVBD(ctx, map[string]any{
+		"uuid": vbdUUID,
+	})
+}
+
+func (c *jsonRPCClient) DisconnectVBD(ctx context.Context, vbdUUID string) error {
+	resp, err := c.call(ctx, "vbd.disconnect", map[string]any{
+		"id": vbdUUID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to disconnect VBD %s: %w", vbdUUID, err)
+	}
+
+	klog.V(4).Infof("Disconnected VBD %s: %s", vbdUUID, string(resp))
+	return nil
+}
+
+func (c *jsonRPCClient) ConnectVBD(ctx context.Context, vbdUUID string) error {
+	resp, err := c.call(ctx, "vbd.connect", map[string]any{
+		"id": vbdUUID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to connect VBD %s: %w", vbdUUID, err)
+	}
+
+	klog.V(4).Infof("Connected VBD %s: %s", vbdUUID, string(resp))
+	return nil
+}
+
+func (c *jsonRPCClient) DeleteVBD(ctx context.Context, vbdUUID string) error {
+	resp, err := c.call(ctx, "vbd.delete", map[string]any{
+		"id": vbdUUID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete VBD %s: %w", vbdUUID, err)
+	}
+
+	klog.V(4).Infof("Deleted VBD %s: %s", vbdUUID, string(resp))
+	return nil
+}
+
+// Compile-time check to ensure Client implements XOAClient interface
+var _ Client = (*jsonRPCClient)(nil)
