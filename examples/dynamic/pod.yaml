@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+  namespace: csi-test
+spec:
+  containers:
+  - name: test-container
+    image: busybox:latest
+    command: ["/bin/sh"]
+    args: ["-c", "echo 'Hello from Xen CSI Driver!' >> /data/test.txt && cat /data/test.txt && sleep 3600"]
+    volumeMounts:
+    - name: xen-volume
+      mountPath: /data
+  volumes:
+  - name: xen-volume
+    persistentVolumeClaim:
+      claimName: test-xen-volume
+  restartPolicy: Never
