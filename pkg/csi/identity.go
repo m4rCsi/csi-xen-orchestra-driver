@@ -41,6 +41,11 @@ func (ids *IdentityService) GetPluginInfo(ctx context.Context, req *csi.GetPlugi
 	}, nil
 }
 
+func (ids *IdentityService) Probe(ctx context.Context, req *csi.ProbeRequest) (*csi.ProbeResponse, error) {
+	klog.V(2).InfoS("Probe: called with args", "req", req)
+	return &csi.ProbeResponse{}, nil
+}
+
 func (ids *IdentityService) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
 	klog.V(2).InfoS("GetPluginCapabilities: called with args", "req", req)
 

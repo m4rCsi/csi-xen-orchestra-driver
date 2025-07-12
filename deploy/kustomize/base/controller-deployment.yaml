@@ -77,12 +77,12 @@ spec:
         - name: XOA_URL
           valueFrom:
             secretKeyRef:
-              name: xoa-csi-credentials
+              name: csi-xen-orchestra-credentials
               key: url
         - name: XOA_TOKEN
           valueFrom:
             secretKeyRef:
-              name: xoa-csi-credentials
+              name: csi-xen-orchestra-credentials
               key: token
         volumeMounts:
           - name: socket-dir
