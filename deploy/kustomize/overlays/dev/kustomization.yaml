@@ -1,0 +1,10 @@
+kind: Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+
+resources:
+- ../../base/
+
+images:
+- digest: sha256:a75e5d1f60c88aae1e47e1fa788f5c1f9949ac4d0f010782ecef62c492e82825
+  name: csi-xen-orchestra-driver
+  newName: ghcr.io/m4rcsi/csi-xen-orchestra-driver

@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: csi-xen-orchestra-controller
+  namespace: kube-system
+  labels:
+    app: csi-xen-orchestra-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: csi-xen-orchestra-controller
+  template:
+    metadata:
+      labels:
+        app: csi-xen-orchestra-controller
+    spec:
+      serviceAccountName: csi-xen-orchestra-sa
+      containers:
+      - name: csi-provisioner
+        image: registry.k8s.io/sig-storage/csi-provisioner:v5.3.0
+        args:
+          - "--csi-address=$(ADDRESS)"
+          - "--leader-election"
+          - "--http-endpoint=:8080"
+        env:
+          - name: ADDRESS
+            value: /var/lib/csi/sockets/pluginproxy/csi.socket
+        imagePullPolicy: "IfNotPresent"
+        volumeMounts:
+          - name: socket-dir
+            mountPath: /var/lib/csi/sockets/pluginproxy/
+        ports:
+          - containerPort: 8080
+            name: http-endpoint
+            protocol: TCP
+        livenessProbe:
+          failureThreshold: 1
+          httpGet:
+            path: /healthz/leader-election
+            port: http-endpoint
+          initialDelaySeconds: 10
+          timeoutSeconds: 10
+          periodSeconds: 20
+      - name: csi-attacher
+        image: registry.k8s.io/sig-storage/csi-attacher:v4.9.0
+        args:
+          - "--v=5"
+          - "--csi-address=$(ADDRESS)"
+          - "--http-endpoint=:8081"
+        env:
+          - name: MY_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: ADDRESS
+            value: /var/lib/csi/sockets/pluginproxy/csi.socket
+        imagePullPolicy: "IfNotPresent"
+        volumeMounts:
+          - name: socket-dir
+            mountPath: /var/lib/csi/sockets/pluginproxy/
+        ports:
+          - containerPort: 8080
+            name: http-endpoint
+            protocol: TCP
+      - name: csi-xen-orchestra-driver
+        image: csi-xen-orchestra-driver
+        imagePullPolicy: IfNotPresent
+        args:
+        - "--endpoint=$(CSI_ENDPOINT)"
+        - "--controller=true"
+        - "--node=false"
+        - "--v=2"
+        env:
+        - name: CSI_ENDPOINT
+          value: unix:///var/lib/csi/sockets/pluginproxy/csi.socket
+        - name: XOA_URL
+          valueFrom:
+            secretKeyRef:
+              name: xoa-csi-credentials
+              key: url
+        - name: XOA_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: xoa-csi-credentials
+              key: token
+        volumeMounts:
+          - name: socket-dir
+            mountPath: /var/lib/csi/sockets/pluginproxy/
+      volumes:
+      - name: socket-dir
+        emptyDir: {} 

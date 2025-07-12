@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: csi-xen-orchestra-node
+  namespace: kube-system
+  labels:
+    app: csi-xen-orchestra-node
+spec:
+  selector:
+    matchLabels:
+      app: csi-xen-orchestra-node
+  template:
+    metadata:
+      labels:
+        app: csi-xen-orchestra-node
+    spec:
+      serviceAccountName: csi-xen-orchestra-sa
+      containers:
+      - name: csi-driver-registrar
+        image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.14.0
+        args:
+          - "--csi-address=/csi/csi.sock"
+          - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi.xen-orchestra.marcsi.ch/csi.sock"
+          - "--health-port=9809"
+        volumeMounts:
+          - name: plugin-dir
+            mountPath: /csi
+          - name: registration-dir
+            mountPath: /registration
+        ports:
+          - containerPort: 9809
+            name: healthz
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: healthz
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+      - name: csi-xen-orchestra-driver
+        image: csi-xen-orchestra-driver
+        imagePullPolicy: IfNotPresent
+        args:
+        - "--endpoint=$(CSI_ENDPOINT)"
+        - "--controller=false"
+        - "--node=true"
+        - "--nodename=$(NODE_NAME)"
+        - "--v=2"
+        env:
+        - name: CSI_ENDPOINT
+          value: unix:///csi/csi.sock
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: plugin-dir
+          mountPath: /csi
+        - name: host-dev
+          mountPath: /dev
+        - name: kubelet-dir
+          mountPath: /var/lib/kubelet
+          mountPropagation: "Bidirectional"
+        securityContext:
+          runAsUser: 0
+          privileged: true
+          capabilities:
+            add: ["SYS_ADMIN"]
+          allowPrivilegeEscalation: true
+      volumes:
+      # This volume is where the driver mounts the socket
+      - name: plugin-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins/csi.xen-orchestra.marcsi.ch
+          type: DirectoryOrCreate
+
+      # This volume is where the node-driver-registrar registers the plugin
+      # with kubelet
+      - name: registration-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry
+          type: Directory
+
+      - name: host-dev
+        hostPath:
+          path: /dev
+
+      # This volume is where the driver mounts volumes
+      - name: kubelet-dir
+        hostPath:
+          path: /var/lib/kubelet
+          type: Directory

@@ -1,0 +1,10 @@
+kind: Kustomization
+
+namespace: kube-system
+
+resources:
+  - controller-deployment.yaml
+  - node-ds.yaml
+  - rbac.yaml
+  - serviceaccount.yaml
+  - csidriver.yaml

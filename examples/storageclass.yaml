@@ -1,0 +1,8 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: xen-orchestra-storage
+provisioner: csi.xen-orchestra.marcsi.ch
+parameters:
+  srUUID: 5e653748-9223-c319-7cb4-f6e20384de61
+volumeBindingMode: WaitForFirstConsumer
