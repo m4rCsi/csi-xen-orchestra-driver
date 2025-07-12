@@ -34,4 +34,4 @@ test:
 
 .PHONY: addlicense
 addlicense:
-	addlicense -c "Marc Siegenthaler" -l apache .
+	addlicense -c "Marc Siegenthaler" -l apache cmd pkg tests

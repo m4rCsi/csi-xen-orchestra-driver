@@ -116,17 +116,20 @@ func (cs *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVo
 		return nil, status.Errorf(codes.InvalidArgument, "volume ID is required")
 	}
 
-	vdi, err := cs.xoaClient.GetVDIByUUID(ctx, volumeId)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
-	}
-	if vdi == nil {
+	// TODO: Probably can just straight up call the DeleteVDI method and ignore error if already deleted
+	_, err := cs.xoaClient.GetVDIByUUID(ctx, volumeId)
+	if errors.Is(err, xoa.ErrObjectNotFound) {
 		// volume already deleted
 		return &csi.DeleteVolumeResponse{}, nil
+	} else if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
 	}
 
-	err = cs.xoaClient.DeleteVDI(ctx, req.GetVolumeId())
-	if err != nil {
+	err = cs.xoaClient.DeleteVDI(ctx, volumeId)
+	if errors.Is(err, xoa.ErrNoSuchObject) {
+		// volume already deleted
+		return &csi.DeleteVolumeResponse{}, nil
+	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete volume: %v", err)
 	}
 
@@ -246,12 +249,11 @@ func (cs *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req
 		return nil, status.Errorf(codes.InvalidArgument, "volume ID is required")
 	}
 
-	vdi, err := cs.xoaClient.GetVDIByUUID(ctx, volumeId)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
-	}
-	if vdi == nil {
+	_, err := cs.xoaClient.GetVDIByUUID(ctx, volumeId)
+	if errors.Is(err, xoa.ErrObjectNotFound) {
 		return nil, status.Errorf(codes.NotFound, "volume not found")
+	} else if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
 	}
 
 	volumeCapabilities := req.GetVolumeCapabilities()

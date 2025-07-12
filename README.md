@@ -7,6 +7,20 @@ CSI Driver for xen-ng managed via Xen Orchestra
 - Xen Orchestra (TODO: Figure out min version) with Access
 
 
+## Features
+- Dynamic Provisioning (creating disk on demand through PVC)
+- Static Provisioning (by referencing UUID of Disk)
+
+
+## TODO
+- Investigate if Resize Disk is possible
+- Add E2E Tests
+
+
+## Development References
+- https://kubernetes-csi.github.io/
+
+
 ## Installation & Configuration
 
 ### Deployment
@@ -48,3 +62,4 @@ parameters:
   srUUID: 5e653748-9223-c319-7cb4-f6e20384de61 # this is the UUID of a Storage Repository
 volumeBindingMode: WaitForFirstConsumer
 ```
+
