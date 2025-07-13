@@ -91,3 +91,18 @@ func (f *FakeMounter) RemovePath(path string) error {
 	delete(f.dirs, path)
 	return nil
 }
+
+func (f *FakeMounter) FindDevicePath(deviceName string, vbdUUID string) (string, error) {
+	klog.V(5).InfoS("Finding device path", "deviceName", deviceName, "vbdUUID", vbdUUID)
+	return "/dev/" + deviceName, nil
+}
+
+func (f *FakeMounter) Resize(devicePath, deviceMountPath string) (bool, error) {
+	klog.V(5).InfoS("Resizing", "devicePath", devicePath, "deviceMountPath", deviceMountPath)
+	return true, nil
+}
+
+func (f *FakeMounter) NeedResize(devicePath, deviceMountPath string) (bool, error) {
+	klog.V(5).InfoS("Need resizing", "devicePath", devicePath, "deviceMountPath", deviceMountPath)
+	return false, nil
+}

@@ -1,19 +1,21 @@
 # csi-xen-orchestra-driver
 CSI Driver for xen-ng managed via Xen Orchestra
 
+Under active Development. Not ready to be used in anger!
 
 ## Requirements
 - Kubernetes (TODO: Figure out min version)
 - Xen Orchestra (TODO: Figure out min version) with Access
+- xe-guest-utils running on nodes
 
 
 ## Features
 - Dynamic Provisioning (creating disk on demand through PVC)
 - Static Provisioning (by referencing UUID of Disk)
+- Offline Volume Expansion (i.e. when not in use)
 
 
 ## TODO
-- Investigate if Resize Disk is possible
 - Add E2E Tests
 
 
@@ -61,6 +63,7 @@ provisioner: csi.xen-orchestra.marcsi.ch
 parameters:
   srUUID: 5e653748-9223-c319-7cb4-f6e20384de61 # this is the UUID of a Storage Repository
 volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
 ```
 
 Supported Optional Parameters:

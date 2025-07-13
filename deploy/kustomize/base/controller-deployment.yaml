@@ -45,14 +45,10 @@ spec:
       - name: csi-attacher
         image: registry.k8s.io/sig-storage/csi-attacher:v4.9.0
         args:
-          - "--v=5"
+          - "--v=4"
           - "--csi-address=$(ADDRESS)"
           - "--http-endpoint=:8081"
         env:
-          - name: MY_NAME
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.name
           - name: ADDRESS
             value: /var/lib/csi/sockets/pluginproxy/csi.socket
         imagePullPolicy: "IfNotPresent"
@@ -60,9 +56,35 @@ spec:
           - name: socket-dir
             mountPath: /var/lib/csi/sockets/pluginproxy/
         ports:
-          - containerPort: 8080
+          - containerPort: 8081
             name: http-endpoint
             protocol: TCP
+      - name: csi-resizer
+        image: registry.k8s.io/sig-storage/csi-resizer:v1.13.2
+        args:
+          - "--v=4"
+          - "--csi-address=$(ADDRESS)"
+          - "--leader-election"
+          - "--http-endpoint=:8082"
+        env:
+          - name: ADDRESS
+            value: /var/lib/csi/sockets/pluginproxy/csi.socket
+        imagePullPolicy: "IfNotPresent"
+        ports:
+          - containerPort: 8082
+            name: http-endpoint
+            protocol: TCP
+        livenessProbe:
+          failureThreshold: 1
+          httpGet:
+            path: /healthz/leader-election
+            port: http-endpoint
+          initialDelaySeconds: 10
+          timeoutSeconds: 10
+          periodSeconds: 20
+        volumeMounts:
+          - name: socket-dir
+            mountPath: /var/lib/csi/sockets/pluginproxy/
       - name: csi-xen-orchestra-driver
         image: csi-xen-orchestra-driver
         imagePullPolicy: IfNotPresent

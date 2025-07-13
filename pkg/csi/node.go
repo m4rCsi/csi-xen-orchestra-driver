@@ -41,19 +41,25 @@ func NewNodeService(driver *Driver, mounter Mounter, nodeID string) *NodeService
 
 func (ns *NodeService) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	klog.V(2).InfoS("NodeStageVolume: called with args", "req", req)
-	device := "/dev/" + req.GetPublishContext()["device"]
-	target := req.GetStagingTargetPath()
 
 	if req.VolumeId == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "volume id is required")
 	}
 
+	target := req.GetStagingTargetPath()
+	if target == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "staging target path is required")
+	}
+
+	device := req.GetPublishContext()["device"]
 	if device == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "device is not set")
 	}
 
-	if target == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "staging target path is required")
+	vbdUUID := req.GetPublishContext()["vbdUUID"]
+	devicePath, err := ns.mounter.FindDevicePath(device, vbdUUID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get device path from device name: %v", err)
 	}
 
 	volCap := req.GetVolumeCapability()
@@ -75,10 +81,24 @@ func (ns *NodeService) NodeStageVolume(ctx context.Context, req *csi.NodeStageVo
 		fsType = DefaultFsType
 	}
 	// Format device if needed
-	if err := ns.mounter.FormatAndMount(device, target, fsType, []string{}); err != nil {
+	klog.V(2).InfoS("Formatting and mountingd evice", "devicePath", devicePath, "target", target, "fsType", fsType)
+	if err := ns.mounter.FormatAndMount(devicePath, target, fsType, []string{}); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to ensure filesystem: %v", err)
 	}
 
+	needResize, err := ns.mounter.NeedResize(devicePath, target)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to check if volume needs resizing: %v", err)
+	}
+
+	if needResize {
+		klog.V(2).InfoS("Volume needs resizing", "devicePath", devicePath, "target", target)
+		if _, err := ns.mounter.Resize(devicePath, target); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to resize volume: %v", err)
+		}
+		klog.V(2).InfoS("Volume resized", "devicePath", devicePath, "target", target)
+	}
+	klog.V(2).InfoS("NodeStageVolume: successfully staged volume", "devicePath", devicePath, "target", target, "fstype", fsType)
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 

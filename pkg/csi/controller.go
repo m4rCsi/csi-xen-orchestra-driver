@@ -271,6 +271,47 @@ func (cs *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req
 	}, nil
 }
 
+func (cs *ControllerService) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+	klog.V(2).InfoS("ControllerExpandVolume: called with args", "req", req)
+
+	volumeId := req.GetVolumeId()
+	if volumeId == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "volume ID is required")
+	}
+
+	vdi, err := cs.xoaClient.GetVDIByUUID(ctx, volumeId)
+	if errors.Is(err, xoa.ErrObjectNotFound) {
+		return nil, status.Errorf(codes.NotFound, "volume not found")
+	} else if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
+	}
+
+	if req.GetVolumeCapability() != nil {
+		if !isValidCapability(req.GetVolumeCapability()) {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid volume capability")
+		}
+	}
+
+	if req.GetCapacityRange() == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "capacity range is required")
+	}
+
+	newCapacity := req.GetCapacityRange().GetRequiredBytes()
+
+	err = cs.xoaClient.ResizeVDI(ctx, vdi.UUID, newCapacity)
+	if errors.Is(err, xoa.ErrVDIInUse) {
+		return nil, status.Errorf(codes.FailedPrecondition, "volume is in use")
+	}
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to resize volume: %v", err)
+	}
+
+	return &csi.ControllerExpandVolumeResponse{
+		CapacityBytes:         newCapacity,
+		NodeExpansionRequired: false, // TODO: We need to expand the disk on the node, however this is currently done in the NodeStageVolume method (i.e. during/after mount)
+	}, nil
+}
+
 func (cs *ControllerService) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
 	klog.V(2).InfoS("ControllerGetCapabilities: called with args", "req", req)
 
@@ -287,6 +328,13 @@ func (cs *ControllerService) ControllerGetCapabilities(ctx context.Context, req 
 				Type: &csi.ControllerServiceCapability_Rpc{
 					Rpc: &csi.ControllerServiceCapability_RPC{
 						Type: csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+					},
+				},
+			},
+			{
+				Type: &csi.ControllerServiceCapability_Rpc{
+					Rpc: &csi.ControllerServiceCapability_RPC{
+						Type: csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 					},
 				},
 			},

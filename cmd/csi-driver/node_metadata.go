@@ -37,6 +37,7 @@ func (n *NodeMetadata) GetNodeId() (string, error) {
 
 // This should give us the VM UUID as reported in Xen Orchestra
 // We are using `/sys/class/dmi/id/product_uuid`. However, I am not sure if there are more reliable ways to get the VM UUID.
+// Another option is to use `xenstore-ls`
 // There is also `/sys/hypervisor/uuid` but it's not clear if that's the same as the VM UUID
 func getNodeIdFromDmiProductUUID() (string, error) {
 	productUUID, err := os.ReadFile("/sys/class/dmi/id/product_uuid")

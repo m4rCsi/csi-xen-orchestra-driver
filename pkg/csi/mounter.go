@@ -25,21 +25,27 @@ type Mounter interface {
 	FormatAndMount(source string, target string, fstype string, options []string) error
 	Unmount(target string) error
 	Mount(source, target, fstype string, options []string) error
+	FindDevicePath(deviceName string, vbdUUID string) (string, error)
+	NeedResize(source, target string) (bool, error)
+	Resize(devicePath, deviceMountPath string) (bool, error)
 }
 
 type SafeMounter struct {
 	mounter     mountutils.Interface
 	safeMounter *mountutils.SafeFormatAndMount
+	exec        utilexec.Interface
 }
 
 func NewSafeMounter() *SafeMounter {
 	mounter := mountutils.New("")
+	exec := utilexec.New()
 	return &SafeMounter{
 		mounter: mounter,
 		safeMounter: &mountutils.SafeFormatAndMount{
 			Interface: mounter,
-			Exec:      utilexec.New(),
+			Exec:      exec,
 		},
+		exec: exec,
 	}
 }
 
@@ -54,3 +60,21 @@ func (s *SafeMounter) Unmount(target string) error {
 func (s *SafeMounter) Mount(source, target, fstype string, options []string) error {
 	return s.mounter.Mount(source, target, fstype, options)
 }
+
+func (s *SafeMounter) NeedResize(devicePath, deviceMountPath string) (bool, error) {
+	return mountutils.NewResizeFs(s.exec).NeedResize(devicePath, deviceMountPath)
+}
+
+func (s *SafeMounter) Resize(devicePath, deviceMountPath string) (bool, error) {
+	resizeFs := mountutils.NewResizeFs(s.exec)
+	return resizeFs.Resize(devicePath, deviceMountPath)
+}
+
+func (s *SafeMounter) FindDevicePath(deviceName string, vbdUUID string) (string, error) {
+	// Ideally we have a way to figure out the device path from the vbdUUID
+	// but we don't have that information here.
+	return "/dev/" + deviceName, nil
+}
+
+// Compile time check to ensure SafeMounter implements the Mounter interface
+var _ Mounter = &SafeMounter{}
