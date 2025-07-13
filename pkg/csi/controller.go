@@ -265,10 +265,7 @@ func (cs *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume capabilities")
 	}
 
-	var confirmed *csi.ValidateVolumeCapabilitiesResponse_Confirmed
-	if isValidVolumeCapabilities(volumeCapabilities) {
-		confirmed = &csi.ValidateVolumeCapabilitiesResponse_Confirmed{VolumeCapabilities: volumeCapabilities}
-	}
+	confirmed := &csi.ValidateVolumeCapabilitiesResponse_Confirmed{VolumeCapabilities: volumeCapabilities}
 	return &csi.ValidateVolumeCapabilitiesResponse{
 		Confirmed: confirmed,
 	}, nil
