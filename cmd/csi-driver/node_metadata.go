@@ -15,14 +15,9 @@
 package main
 
 import (
-	"context"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/klog/v2"
+	"fmt"
+	"os"
+	"strings"
 )
 
 type NodeMetadataGetter interface {
@@ -30,34 +25,29 @@ type NodeMetadataGetter interface {
 }
 
 type NodeMetadata struct {
-	nodeName string
 }
 
-func NewNodeMetadata(nodeName string) *NodeMetadata {
-	return &NodeMetadata{
-		nodeName: nodeName,
-	}
+func NewNodeMetadata() *NodeMetadata {
+	return &NodeMetadata{}
 }
 
 func (n *NodeMetadata) GetNodeId() (string, error) {
-	// TODO: is systemUUID actually the right way to detect the VM UUID?
-	return getNodeIdFromSystemUUID(n.nodeName)
+	return getNodeIdFromDmiProductUUID()
 }
 
-func getNodeIdFromSystemUUID(nodeName string) (string, error) {
-	config, err := rest.InClusterConfig()
+// This should give us the VM UUID as reported in Xen Orchestra
+// We are using `/sys/class/dmi/id/product_uuid`. However, I am not sure if there are more reliable ways to get the VM UUID.
+// There is also `/sys/hypervisor/uuid` but it's not clear if that's the same as the VM UUID
+func getNodeIdFromDmiProductUUID() (string, error) {
+	productUUID, err := os.ReadFile("/sys/class/dmi/id/product_uuid")
 	if err != nil {
-		klog.Fatalf("failed to create Kubernetes client: %v", err)
-	}
-	kubeClient, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		klog.Fatalf("failed to create Kubernetes client: %v", err)
+		return "", fmt.Errorf("failed to read product UUID: %w", err)
 	}
 
-	klog.Infof("Getting node ID for %s", nodeName)
-	node, err := kubeClient.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
-	if err != nil {
-		return "", status.Errorf(codes.Internal, "failed to get node: %v", err)
+	uuid := strings.TrimSpace(string(productUUID))
+	if uuid == "" {
+		return "", fmt.Errorf("failed to get product UUID: product UUID is empty")
 	}
-	return node.Status.NodeInfo.SystemUUID, nil
+
+	return uuid, nil
 }

@@ -29,7 +29,6 @@ import (
 
 var (
 	endpoint     = flag.String("endpoint", "unix:///tmp/csi.sock", "CSI endpoint")
-	nodeName     = flag.String("nodename", "", "Node Name")
 	controller   = flag.Bool("controller", false, "Run as controller service")
 	node         = flag.Bool("node", false, "Run as node service")
 	nameOverride = flag.String("driver-name-override", "", "Driver name override")
@@ -77,10 +76,7 @@ func main() {
 		defer xoaClient.Close()
 	}
 	if mode == csi.NodeMode || mode == csi.AllMode {
-		if *nodeName == "" {
-			klog.Fatal("Node Name is required")
-		}
-		nodeMetadata = NewNodeMetadata(*nodeName)
+		nodeMetadata = NewNodeMetadata()
 		mounter = csi.NewSafeMounter()
 	}
 
