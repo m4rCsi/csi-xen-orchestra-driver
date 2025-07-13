@@ -5,6 +5,6 @@ resources:
 - ../../base/
 
 images:
-- digest: sha256:0637817e71028e18e7ec45f992f21d89a32abe3d2e42704ee87d49247aea48fe
+- digest: sha256:8fb172087f92357a6a28a24b5b69ce69b282dcff196e43f5dd7494a808d9b462
   name: csi-xen-orchestra-driver
   newName: ghcr.io/m4rcsi/csi-xen-orchestra-driver

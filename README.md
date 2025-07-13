@@ -63,3 +63,5 @@ parameters:
 volumeBindingMode: WaitForFirstConsumer
 ```
 
+Supported Optional Parameters:
+- `csi.storage.k8s.io/fstype`: `ext4` (default) or `xfs`

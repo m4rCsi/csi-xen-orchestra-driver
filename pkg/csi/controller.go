@@ -274,34 +274,6 @@ func (cs *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req
 	}, nil
 }
 
-func isValidVolumeCapabilities(v []*csi.VolumeCapability) bool {
-	if len(v) == 0 {
-		return false
-	}
-
-	for _, c := range v {
-		if !isValidCapability(c) {
-			return false
-		}
-	}
-	return true
-}
-
-func isValidCapability(c *csi.VolumeCapability) bool {
-	if c == nil {
-		return false
-	}
-
-	accessMode := c.GetAccessMode().GetMode()
-	switch accessMode {
-	case csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER:
-		return true
-	default:
-		klog.V(2).InfoS("isValidCapability: access mode is not supported", "accessMode", accessMode)
-		return false
-	}
-}
-
 func (cs *ControllerService) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
 	klog.V(2).InfoS("ControllerGetCapabilities: called with args", "req", req)
 

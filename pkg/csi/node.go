@@ -56,12 +56,26 @@ func (ns *NodeService) NodeStageVolume(ctx context.Context, req *csi.NodeStageVo
 		return nil, status.Errorf(codes.InvalidArgument, "staging target path is required")
 	}
 
-	if req.VolumeCapability == nil {
+	volCap := req.GetVolumeCapability()
+	if volCap == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "volume capability is required")
 	}
 
+	if !isValidVolumeCapabilities([]*csi.VolumeCapability{volCap}) {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume capability")
+	}
+
+	mount := volCap.GetMount()
+	if mount == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "volume capability is not a mount")
+	}
+
+	fsType := mount.GetFsType()
+	if fsType == "" {
+		fsType = DefaultFsType
+	}
 	// Format device if needed
-	if err := ns.mounter.FormatAndMount(device, target, "ext4", []string{}); err != nil {
+	if err := ns.mounter.FormatAndMount(device, target, fsType, []string{}); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to ensure filesystem: %v", err)
 	}
 
@@ -94,8 +108,18 @@ func (ns *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePubli
 		return nil, status.Errorf(codes.InvalidArgument, "volume id is required")
 	}
 
-	if req.VolumeCapability == nil {
+	volCap := req.GetVolumeCapability()
+	if volCap == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "volume capability is required")
+	}
+
+	if !isValidVolumeCapabilities([]*csi.VolumeCapability{volCap}) {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume capability")
+	}
+
+	mount := volCap.GetMount()
+	if mount == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "volume capability is not a mount")
 	}
 
 	source := req.GetStagingTargetPath()
@@ -105,9 +129,15 @@ func (ns *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePubli
 		return nil, status.Errorf(codes.InvalidArgument, "target path is required")
 	}
 
+	fsType := mount.GetFsType()
+	if fsType == "" {
+		fsType = DefaultFsType
+	}
+
+	// TODO: Check what permissions are needed for the target path
 	os.MkdirAll(target, 0755)
 
-	if err := ns.mounter.Mount(source, target, "ext4", []string{"bind"}); err != nil {
+	if err := ns.mounter.Mount(source, target, fsType, []string{"bind"}); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to mount device: %v", err)
 	}
 	return &csi.NodePublishVolumeResponse{}, nil

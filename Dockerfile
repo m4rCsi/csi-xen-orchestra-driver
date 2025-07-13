@@ -27,7 +27,7 @@ LABEL org.opencontainers.image.description="CSI driver for Xen Orchestra"
 LABEL org.opencontainers.image.licenses=Apache-2.0
 
 # Install ca-certificates for HTTPS requests, util-linux for mount command, and e2fsprogs for ext4 formatting
-RUN apk --no-cache add ca-certificates tzdata util-linux e2fsprogs
+RUN apk --no-cache add ca-certificates tzdata util-linux e2fsprogs xfsprogs
 
 # Create non-root user
 RUN addgroup -g 1001 -S appgroup && \
