@@ -106,3 +106,8 @@ func (f *FakeMounter) NeedResize(devicePath, deviceMountPath string) (bool, erro
 	klog.V(5).InfoS("Need resizing", "devicePath", devicePath, "deviceMountPath", deviceMountPath)
 	return false, nil
 }
+
+func (f *FakeMounter) GetDeviceNameFromMount(mountPath string) (string, int, error) {
+	klog.V(5).InfoS("Getting device name from mount", "mountPath", mountPath)
+	return "fake-device", 0, nil
+}

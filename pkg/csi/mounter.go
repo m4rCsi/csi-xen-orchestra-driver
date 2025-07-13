@@ -28,6 +28,7 @@ type Mounter interface {
 	FindDevicePath(deviceName string, vbdUUID string) (string, error)
 	NeedResize(source, target string) (bool, error)
 	Resize(devicePath, deviceMountPath string) (bool, error)
+	GetDeviceNameFromMount(mountPath string) (string, int, error)
 }
 
 type SafeMounter struct {
@@ -54,7 +55,7 @@ func (s *SafeMounter) FormatAndMount(source, target, fstype string, options []st
 }
 
 func (s *SafeMounter) Unmount(target string) error {
-	return s.mounter.Unmount(target)
+	return mountutils.CleanupMountPoint(target, s.mounter, true)
 }
 
 func (s *SafeMounter) Mount(source, target, fstype string, options []string) error {
@@ -74,6 +75,10 @@ func (s *SafeMounter) FindDevicePath(deviceName string, vbdUUID string) (string,
 	// Ideally we have a way to figure out the device path from the vbdUUID
 	// but we don't have that information here.
 	return "/dev/" + deviceName, nil
+}
+
+func (s *SafeMounter) GetDeviceNameFromMount(mountPath string) (string, int, error) {
+	return mountutils.GetDeviceNameFromMount(s.mounter, mountPath)
 }
 
 // Compile time check to ensure SafeMounter implements the Mounter interface

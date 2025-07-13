@@ -16,6 +16,7 @@ package csi
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -80,8 +81,22 @@ func (ns *NodeService) NodeStageVolume(ctx context.Context, req *csi.NodeStageVo
 	if fsType == "" {
 		fsType = DefaultFsType
 	}
+
+	// Check if a device is already mounted at our target
+	currentDevice, _, err := ns.mounter.GetDeviceNameFromMount(target)
+	if err != nil {
+		msg := fmt.Sprintf("failed to check if volume is already mounted: %v", err)
+		return nil, status.Error(codes.Internal, msg)
+	}
+
+	klog.V(4).InfoS("NodeStageVolume: checking if volume is already staged", "device", device, "currentDevice", currentDevice, "target", target)
+	if currentDevice == device {
+		klog.V(2).InfoS("NodeStageVolume: volume already staged", "device", device, "target", target)
+		return &csi.NodeStageVolumeResponse{}, nil
+	}
+
 	// Format device if needed
-	klog.V(2).InfoS("Formatting and mountingd evice", "devicePath", devicePath, "target", target, "fsType", fsType)
+	klog.V(2).InfoS("Formatting and mounting device", "devicePath", devicePath, "target", target, "fsType", fsType)
 	if err := ns.mounter.FormatAndMount(devicePath, target, fsType, []string{}); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to ensure filesystem: %v", err)
 	}
@@ -109,11 +124,27 @@ func (ns *NodeService) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnsta
 		return nil, status.Errorf(codes.InvalidArgument, "volume id is required")
 	}
 
-	if req.GetStagingTargetPath() == "" {
+	target := req.GetStagingTargetPath()
+	if target == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "staging target path is required")
 	}
 
-	err := ns.mounter.Unmount(req.GetStagingTargetPath())
+	device, refCount, err := ns.mounter.GetDeviceNameFromMount(target)
+	if err != nil {
+		msg := fmt.Sprintf("failed to check if target %q is a mount point: %v", target, err)
+		return nil, status.Error(codes.Internal, msg)
+	}
+
+	if refCount == 0 {
+		klog.V(2).InfoS("NodeUnstageVolume: target not mounted", "target", target)
+		return &csi.NodeUnstageVolumeResponse{}, nil
+	}
+
+	if refCount > 1 {
+		klog.InfoS("NodeUnstageVolume: found references to device mounted at target path", "refCount", refCount, "device", device, "target", target)
+	}
+
+	err = ns.mounter.Unmount(target)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount device: %v", err)
 	}
