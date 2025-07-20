@@ -5,7 +5,10 @@ Under active Development. Not ready to be used in anger!
 
 ## Requirements
 - Kubernetes (TODO: Figure out min version)
-- Xen Orchestra (TODO: Figure out min version) with Access
+  - Minimum based on on csi components: 1.20
+  - Minimum based on deployment resources
+  - Tested with 1.30
+- Xen Orchestra (TODO: Figure out min version)
 - xe-guest-utils running on nodes
 
 
