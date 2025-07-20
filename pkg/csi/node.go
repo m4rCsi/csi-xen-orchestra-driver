@@ -101,18 +101,18 @@ func (ns *NodeService) NodeStageVolume(ctx context.Context, req *csi.NodeStageVo
 		return nil, status.Errorf(codes.Internal, "failed to ensure filesystem: %v", err)
 	}
 
-	needResize, err := ns.mounter.NeedResize(devicePath, target)
+	// Resize volume if needed
+	// According to https://github.com/kubernetes/mount-utils/blob/master/resizefs_linux.go#L133-L136
+	// it is not recommended to check if the volume needs resizing and let resize2fs/xfs_growfs do the check for us.
+	// We might need to change this if we want to support other filesystems in the future.
+	resized, err := ns.mounter.Resize(devicePath, target)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to check if volume needs resizing: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to resize volume: %v", err)
 	}
-
-	if needResize {
-		klog.V(2).InfoS("Volume needs resizing", "devicePath", devicePath, "target", target)
-		if _, err := ns.mounter.Resize(devicePath, target); err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to resize volume: %v", err)
-		}
+	if resized {
 		klog.V(2).InfoS("Volume resized", "devicePath", devicePath, "target", target)
 	}
+
 	klog.V(2).InfoS("NodeStageVolume: successfully staged volume", "devicePath", devicePath, "target", target, "fstype", fsType)
 	return &csi.NodeStageVolumeResponse{}, nil
 }
