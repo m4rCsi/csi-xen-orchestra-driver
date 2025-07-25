@@ -630,5 +630,18 @@ func (c *jsonRPCClient) DeleteVBD(ctx context.Context, vbdUUID string) error {
 	return nil
 }
 
+func (c *jsonRPCClient) MigrateVDI(ctx context.Context, vdiUUID, srUUID string) error {
+	resp, err := c.call(ctx, "vdi.migrate", map[string]any{
+		"id":    vdiUUID,
+		"sr_id": srUUID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to migrate VDI: %w", err)
+	}
+
+	klog.V(4).Infof("Migrated VDI %s to SR %s: %s", vdiUUID, srUUID, string(resp))
+	return nil
+}
+
 // Compile-time check to ensure Client implements XOAClient interface
 var _ Client = (*jsonRPCClient)(nil)

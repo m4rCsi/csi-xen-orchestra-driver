@@ -1,0 +1,11 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: xoa-migrating
+provisioner: csi.xen-orchestra.marcsi.ch
+parameters:
+  csi.storage.k8s.io/fstype: ext3
+  type: migrating
+  srUUIDs: 5e653748-9223-c319-7cb4-f6e20384de61,c17dba30-e17a-f349-6316-56f20478992e
+volumeBindingMode: Immediate
+allowVolumeExpansion: true

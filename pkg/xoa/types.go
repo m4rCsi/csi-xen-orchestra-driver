@@ -48,6 +48,7 @@ type Client interface {
 	EditVDI(ctx context.Context, uuid string, nameLabel string, size int64) error
 	ResizeVDI(ctx context.Context, uuid string, size int64) error
 	DeleteVDI(ctx context.Context, uuid string) error
+	MigrateVDI(ctx context.Context, vdiUUID, srUUID string) error
 
 	// SR (Storage Repository) operations
 	GetSRs(ctx context.Context, filter map[string]any) ([]SR, error)
@@ -87,6 +88,8 @@ type VM struct {
 	Memory       Memory `json:"memory"`
 	VCPUsAtStart int    `json:"vcpus_at_start,omitempty"`
 	VCPUsMax     int    `json:"vcpus_max,omitempty"`
+	Pool         string `json:"$pool,omitempty"`
+	Host         string `json:"$container,omitempty"`
 }
 
 // VDI represents a virtual disk image
@@ -95,7 +98,8 @@ type VDI struct {
 	NameLabel string `json:"name_label"`
 	Size      int64  `json:"size"`
 	Type      string `json:"type"`
-	SR        string `json:"sr,omitempty"`
+	SR        string `json:"$sr,omitempty"`
+	Pool      string `json:"$pool,omitempty"`
 	ReadOnly  bool   `json:"read_only,omitempty"`
 	Sharable  bool   `json:"sharable,omitempty"`
 }
@@ -108,6 +112,8 @@ type SR struct {
 	PhysicalSize        int64  `json:"physical_size"`
 	VirtualAllocation   int64  `json:"virtual_allocation,omitempty"`
 	PhysicalUtilisation int64  `json:"physical_utilisation,omitempty"`
+	Pool                string `json:"$pool,omitempty"`
+	Host                string `json:"$container,omitempty"`
 }
 
 // VBD represents a Virtual Block Device (connection between VDI and VM)

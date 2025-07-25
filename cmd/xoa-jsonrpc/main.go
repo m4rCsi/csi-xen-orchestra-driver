@@ -145,6 +145,15 @@ func main() {
 		newSize := int64(1024 * 1024 * 1024 * 5) // 5GB
 		resizeDisk(client, *diskName, newSize)
 
+	case "migrate-disk":
+		if *diskName == "" {
+			log.Fatal("-disk-name flag is required for migrate-disk command")
+		}
+		if *srUUID == "" {
+			log.Fatal("-sr-uuid flag is required for migrate-disk command")
+		}
+		migrateDisk(client, *diskName, *srUUID)
+
 	case "list-disks":
 		listDisks(client, diskName)
 
@@ -354,6 +363,22 @@ func checkDiskAttachment(client xoa.Client, diskName, vmUUID string) {
 		fmt.Printf("Disk '%s' is not attached to VM %s\n", diskName, vmUUID)
 	}
 	os.Exit(0)
+}
+
+func migrateDisk(client xoa.Client, diskName, srUUID string) {
+	ctx := context.Background()
+
+	vdi, err := client.GetVDIByName(ctx, diskName)
+	if err != nil {
+		log.Fatalf("Failed to get VDIs: %v", err)
+	}
+
+	err = client.MigrateVDI(ctx, vdi.UUID, srUUID)
+	if err != nil {
+		log.Fatalf("Failed to migrate VDI: %v", err)
+	}
+
+	fmt.Printf("Successfully migrated disk '%s' to SR %s\n", diskName, srUUID)
 }
 
 func resizeDisk(client xoa.Client, diskName string, newSize int64) {

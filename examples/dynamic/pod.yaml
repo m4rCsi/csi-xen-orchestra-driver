@@ -4,11 +4,12 @@ metadata:
   name: test-dynamic-pod
   namespace: csi-test
 spec:
+  terminationGracePeriodSeconds: 0
   containers:
   - name: test-container
     image: busybox:latest
     command: ["/bin/sh"]
-    args: ["-c", "echo 'Hello from Xen CSI Driver!' >> /data/test.txt && cat /data/test.txt && sleep 3600"]
+    args: ["-c", "echo 'Hello from Xen CSI Driver!' >> /data/test.txt && cat /data/test.txt && sleep 600"]
     volumeMounts:
     - name: xen-volume
       mountPath: /data

@@ -580,6 +580,25 @@ func (f *FakeClient) DeleteVBD(ctx context.Context, vbdUUID string) error {
 	return nil
 }
 
+func (f *FakeClient) MigrateVDI(ctx context.Context, vdiUUID, srUUID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if err := f.checkConnection(); err != nil {
+		return err
+	}
+
+	vdi, exists := f.vdis[vdiUUID]
+	if !exists {
+		return xoa.ErrNoSuchObject
+	}
+
+	vdi.SR = srUUID
+	klog.V(2).InfoS("Migrated fake VDI", "vdiUUID", vdiUUID, "srUUID", srUUID)
+
+	return nil
+}
+
 // checkConnection checks if the client is connected
 func (f *FakeClient) checkConnection() error {
 	if !f.isConnected {
