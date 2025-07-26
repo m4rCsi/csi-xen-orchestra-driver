@@ -166,13 +166,6 @@ func (c *jsonRPCClient) call(ctx context.Context, method string, params any) (js
 	c.nextID++
 	callback := make(chan *jsonRPCResponse, 1)
 	c.callbacks[id] = callback
-	c.mu.Unlock()
-
-	defer func() {
-		c.mu.Lock()
-		delete(c.callbacks, id)
-		c.mu.Unlock()
-	}()
 
 	// Create request
 	request := &jsonRPCRequest{
@@ -182,10 +175,19 @@ func (c *jsonRPCClient) call(ctx context.Context, method string, params any) (js
 		ID:      id,
 	}
 
-	// Send request
+	// Send request - PROTECTED BY MUTEX
 	if err := c.conn.WriteJSON(request); err != nil {
+		c.mu.Unlock()
 		return nil, fmt.Errorf("failed to send request: %w", ErrConnectionError)
 	}
+
+	c.mu.Unlock()
+
+	defer func() {
+		c.mu.Lock()
+		delete(c.callbacks, id)
+		c.mu.Unlock()
+	}()
 
 	// Wait for response
 	select {
