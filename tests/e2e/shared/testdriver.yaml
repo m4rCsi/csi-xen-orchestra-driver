@@ -1,0 +1,16 @@
+StorageClass:
+  FromFile: ./e2e/shared/storageclass.yaml
+DriverInfo:
+  Name: csi.xen-orchestra.marcsi.ch
+  Capabilities:
+    persistence: true
+    offlineExpansion: true
+  # SupportedFsType:
+    # ext4: true
+    # ext3: true
+    # xfs: true
+  SupportedSizeRange:
+    Min: 1Gi
+    Max: 10Gi
+  RequiredAccessModes:
+    - ReadWriteOnce
