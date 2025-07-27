@@ -17,7 +17,7 @@ Under active Development. Not ready to be used in anger!
 - Static Provisioning (by referencing UUID of Disk)
 - Offline Volume Expansion (i.e. when not in use)
 
-### Mode: shared
+### Type: shared
 
 In this mode, the SR will needs to be accessibly by all hypervisors that kubernetes nodes will be running on.
 This should work with any `shared` storage types, such as `NFS` and `iSCSI` etc. However I have only been it able to test it with `NFS`.
@@ -36,7 +36,7 @@ allowVolumeExpansion: true
 ```
 
 
-### Mode: migrating
+### Type: migrating
 
 In this mode, it is expected that different SRs will be available on the hypvervisors that kubernetes nodes will be running on.
 Therefore `srUUIDs` needs to be populated with a comma seperated list of SR UUIDs, and it should span all hypvervisors where you will need this to work for.
@@ -100,7 +100,7 @@ metadata:
   name: xen-orchestra-storage
 provisioner: csi.xen-orchestra.marcsi.ch
 parameters:
-  mode: shared # or migrating
+  type: shared # or migrating
   srUUID: 5e653748-9223-c319-7cb4-f6e20384de61 # this is the UUID of a Storage Repository
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -108,6 +108,6 @@ allowVolumeExpansion: true
 
 Supported Parameters:
 - `csi.storage.k8s.io/fstype`: `ext3`,`ext4`,`xfs` (default: `ext4`)
-- `mode`: `shared` or `migrating`
+- `type`: `shared` or `migrating`
 - `srUUID`: UUID of a Storage Repository (required for mode=`shared`)
 - `srUUIDs`: UUIDs of all Storage Repositories (required for mode=`migrating`)
