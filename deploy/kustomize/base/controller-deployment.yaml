@@ -23,6 +23,7 @@ spec:
           - "--csi-address=$(ADDRESS)"
           - "--leader-election"
           - "--http-endpoint=:8080"
+          - "--timeout=120s"
         env:
           - name: ADDRESS
             value: /var/lib/csi/sockets/pluginproxy/csi.socket
@@ -45,9 +46,9 @@ spec:
       - name: csi-attacher
         image: registry.k8s.io/sig-storage/csi-attacher:v4.9.0
         args:
-          - "--v=4"
           - "--csi-address=$(ADDRESS)"
           - "--http-endpoint=:8081"
+          - "--timeout=120s"
         env:
           - name: ADDRESS
             value: /var/lib/csi/sockets/pluginproxy/csi.socket
@@ -62,10 +63,10 @@ spec:
       - name: csi-resizer
         image: registry.k8s.io/sig-storage/csi-resizer:v1.13.2
         args:
-          - "--v=4"
           - "--csi-address=$(ADDRESS)"
           - "--leader-election"
           - "--http-endpoint=:8082"
+          - "--timeout=120s"
         env:
           - name: ADDRESS
             value: /var/lib/csi/sockets/pluginproxy/csi.socket
@@ -92,7 +93,7 @@ spec:
         - "--endpoint=$(CSI_ENDPOINT)"
         - "--controller=true"
         - "--node=false"
-        - "--v=2"
+        - "--v=4"
         env:
         - name: CSI_ENDPOINT
           value: unix:///var/lib/csi/sockets/pluginproxy/csi.socket

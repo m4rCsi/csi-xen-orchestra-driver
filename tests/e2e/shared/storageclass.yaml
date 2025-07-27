@@ -1,9 +1,10 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: xen-orchestra-storage
+  name: xoa-shared
 provisioner: csi.xen-orchestra.marcsi.ch
 parameters:
-  srUUID: 5e653748-9223-c319-7cb4-f6e20384de61
-volumeBindingMode: WaitForFirstConsumer
+  csi.storage.k8s.io/fstype: ext4
+  type: shared
+  srUUID: 15607a67-58c5-ac9c-45ca-7c3659bdfa19
 allowVolumeExpansion: true

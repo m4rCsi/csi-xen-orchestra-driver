@@ -166,7 +166,6 @@ func (c *jsonRPCClient) call(ctx context.Context, method string, params any) (js
 	c.nextID++
 	callback := make(chan *jsonRPCResponse, 1)
 	c.callbacks[id] = callback
-	c.mu.Unlock()
 
 	defer func() {
 		c.mu.Lock()
@@ -182,10 +181,13 @@ func (c *jsonRPCClient) call(ctx context.Context, method string, params any) (js
 		ID:      id,
 	}
 
-	// Send request
+	// Send request - PROTECTED BY MUTEX
 	if err := c.conn.WriteJSON(request); err != nil {
+		c.mu.Unlock()
 		return nil, fmt.Errorf("failed to send request: %w", ErrConnectionError)
 	}
+
+	c.mu.Unlock()
 
 	// Wait for response
 	select {
@@ -197,7 +199,7 @@ func (c *jsonRPCClient) call(ctx context.Context, method string, params any) (js
 	case <-time.After(c.config.Timeout):
 		return nil, fmt.Errorf("request timeout: %w", ErrConnectionError)
 	case <-ctx.Done():
-		return nil, fmt.Errorf("context cancelled: %w", ErrConnectionError)
+		return nil, fmt.Errorf("context cancelled: %w", ErrContextCancelled)
 	case <-c.ctx.Done():
 		return nil, fmt.Errorf("client closed: %w", ErrConnectionError)
 	}
@@ -267,8 +269,11 @@ func (c *jsonRPCClient) handleMessages() {
 				default:
 					klog.Warningf("Callback channel full for ID %d", response.ID)
 				}
+			} else if response.ID == 0 {
+				// This is a notification, we can ignore it
 			} else {
 				klog.V(4).Infof("Received message for unknown ID %d: %s", response.ID, string(message))
+				// This is a response to a request that we didn't make, we can ignore it
 			}
 			c.mu.Unlock()
 		}
@@ -381,6 +386,30 @@ func (c *jsonRPCClient) GetVDIByUUID(ctx context.Context, uuid string) (*VDI, er
 	})
 }
 
+func (c *jsonRPCClient) EditVDI(ctx context.Context, uuid string, name, description *string) error {
+	params := map[string]any{
+		"id": uuid,
+	}
+
+	if description != nil {
+		params["name_description"] = *description
+	}
+
+	if name != nil {
+		params["name_label"] = *name
+	}
+
+	klog.V(4).Infof("Editing VDI %s: %v", uuid, params)
+
+	result, err := c.call(ctx, "vdi.set", params)
+	if err != nil {
+		return fmt.Errorf("failed to set VDI description: %w", err)
+	}
+
+	klog.V(4).Infof("Set VDI %s description: %s", uuid, string(result))
+	return nil
+}
+
 // GetSRs retrieves all storage repositories
 func (c *jsonRPCClient) GetSRs(ctx context.Context, filter map[string]any) ([]SR, error) {
 	if filter == nil {
@@ -437,6 +466,8 @@ func (c *jsonRPCClient) CreateVDI(ctx context.Context, nameLabel, srUUID string,
 		"name": nameLabel,
 		"size": size,
 		"sr":   srUUID,
+		// "description": "test-description",
+		// "name_description": "test-description2",
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create VDI: %w", err)
@@ -448,12 +479,6 @@ func (c *jsonRPCClient) CreateVDI(ctx context.Context, nameLabel, srUUID string,
 	}
 
 	return vdiID, nil
-}
-
-func (c *jsonRPCClient) EditVDI(ctx context.Context, uuid string, nameLabel string, size int64) error {
-	// vdi.set id=<string> [name_label=<string>] [name_description=<string>] [size=<integer|string>] [cbt=<boolean>]
-
-	return ErrNotImplemented
 }
 
 func (c *jsonRPCClient) ResizeVDI(ctx context.Context, uuid string, size int64) error {
@@ -502,6 +527,46 @@ func (c *jsonRPCClient) AttachVDI(ctx context.Context, vmUUID, vdiUUID string, m
 	return nil, fmt.Errorf("unexpected response from vm.attachDisk: %s", string(result))
 }
 
+func (c *jsonRPCClient) ConnectVBDAndWaitForDevice(ctx context.Context, vbdUUID string) (*VBD, error) {
+	// Check if VBD is already connected
+	vbd, err := c.GetVBDByUUID(ctx, vbdUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get VBD: %w", err)
+	}
+
+	if vbd.Attached && vbd.Device != "" {
+		return vbd, nil
+	}
+
+	err = c.ConnectVBD(ctx, vbdUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Poll every 500ms until VBD is created or context is cancelled
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("context cancelled while waiting for VBD: %w", ctx.Err())
+		case <-ticker.C:
+			// Check if VBD has been created
+			vbd, err := c.GetVBDByUUID(ctx, vbdUUID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get VBD: %w", err)
+			}
+
+			if vbd.Attached && vbd.Device != "" {
+				return vbd, nil
+			}
+
+			klog.V(4).Infof("VBD not yet created, continuing to poll...")
+		}
+	}
+}
+
 func (c *jsonRPCClient) AttachVDIAndWaitForDevice(ctx context.Context, vmUUID, vdiUUID string, mode string) (*VBD, error) {
 	ok, err := c.AttachVDI(ctx, vmUUID, vdiUUID, mode)
 	if err != nil {
@@ -512,7 +577,7 @@ func (c *jsonRPCClient) AttachVDIAndWaitForDevice(ctx context.Context, vmUUID, v
 		return nil, fmt.Errorf("failed to attach VDI")
 	}
 
-	// Poll every 200ms until VBD is created or context is cancelled
+	// Poll every 500ms until VBD is created or context is cancelled
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -628,6 +693,24 @@ func (c *jsonRPCClient) DeleteVBD(ctx context.Context, vbdUUID string) error {
 
 	klog.V(4).Infof("Deleted VBD %s: %s", vbdUUID, string(resp))
 	return nil
+}
+
+func (c *jsonRPCClient) MigrateVDI(ctx context.Context, vdiUUID, srUUID string) (string, error) {
+	resp, err := c.call(ctx, "vdi.migrate", map[string]any{
+		"id":    vdiUUID,
+		"sr_id": srUUID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to migrate VDI: %w", err)
+	}
+
+	var newVdiUUID string
+	if err := json.Unmarshal(resp, &newVdiUUID); err != nil {
+		return "", fmt.Errorf("%w: failed to unmarshal new VDI UUID: %w", ErrUnmarshalError, err)
+	}
+
+	klog.V(4).Infof("Migrated VDI %s to SR %s: %s", vdiUUID, srUUID, string(resp))
+	return newVdiUUID, nil
 }
 
 // Compile-time check to ensure Client implements XOAClient interface

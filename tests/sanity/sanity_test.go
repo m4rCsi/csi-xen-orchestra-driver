@@ -118,7 +118,7 @@ func TestSanity(t *testing.T) {
 
 var _ = Describe("Xen CSI Driver", func() {
 
-	Describe("Sanity", func() {
+	Describe("Sanity Migrating Storage", func() {
 		config := csisanity.NewTestConfig()
 		// Set configuration options as needed
 		config.Address = csiSocketPath
@@ -127,8 +127,10 @@ var _ = Describe("Xen CSI Driver", func() {
 		config.TestVolumeSize = 1024 * 1024 * 1024 * 10 // 10GB
 		config.TestVolumeAccessType = "mount"
 		config.TestVolumeParameters = map[string]string{
-			"srUUID": FakeSRUUID,
+			"type":    "migrating",
+			"srUUIDs": FakeSRUUID,
 		}
+
 		config.CheckPath = func(path string) (csisanity.PathKind, error) {
 			return fakeMounter.CheckPath(path)
 		}
@@ -147,4 +149,38 @@ var _ = Describe("Xen CSI Driver", func() {
 
 		csisanity.GinkgoTest(&config)
 	})
+
+	Describe("Sanity Shared Storage", func() {
+		config := csisanity.NewTestConfig()
+		// Set configuration options as needed
+		config.Address = csiSocketPath
+		config.TargetPath = path.Join(tmpDirectory, "mount")
+		config.StagingPath = path.Join(tmpDirectory, "staging")
+		config.TestVolumeSize = 1024 * 1024 * 1024 * 10 // 10GB
+		config.TestVolumeAccessType = "mount"
+
+		config.TestVolumeParameters = map[string]string{
+			"type":   "shared",
+			"srUUID": FakeSRUUID,
+		}
+
+		config.CheckPath = func(path string) (csisanity.PathKind, error) {
+			return fakeMounter.CheckPath(path)
+		}
+		config.CreateTargetDir = func(path string) (string, error) {
+			return fakeMounter.CreateDir(path)
+		}
+		config.RemoveTargetPath = func(path string) error {
+			return fakeMounter.RemovePath(path)
+		}
+		config.CreateStagingDir = func(path string) (string, error) {
+			return fakeMounter.CreateDir(path)
+		}
+		config.RemoveStagingPath = func(path string) error {
+			return fakeMounter.RemovePath(path)
+		}
+
+		csisanity.GinkgoTest(&config)
+	})
+
 })

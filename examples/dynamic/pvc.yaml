@@ -8,5 +8,5 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
-  storageClassName: xen-orchestra-storage
+      storage: 10Gi
+  storageClassName: xoa-migrating
