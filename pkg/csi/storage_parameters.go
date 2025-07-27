@@ -1,3 +1,17 @@
+// Copyright 2025 Marc Siegenthaler
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package csi
 
 import (
@@ -8,17 +22,10 @@ import (
 )
 
 type StorageType string
-type VolumeIDType string
 
 const (
 	StorageTypeShared    StorageType = "shared"
 	StorageTypeMigrating StorageType = "migrating"
-)
-
-const (
-	NameAsVolumeID  VolumeIDType = "name"
-	UUIDAsVolumeID  VolumeIDType = "uuid"
-	InvalidVolumeID VolumeIDType = "invalid"
 )
 
 type storageParmaters struct {
@@ -120,27 +127,5 @@ func (s *storageParmaters) VolumeIDType() VolumeIDType {
 		return UUIDAsVolumeID
 	default:
 		return UUIDAsVolumeID
-	}
-}
-
-func CreateVolumeIDWithName(name string) string {
-	return "name:" + name
-}
-
-func CreateVolumeIDWithUUID(uuid string) string {
-	return "uuid:" + uuid
-}
-
-func ParseVolumeID(volumeID string) (VolumeIDType, string, error) {
-	if volumeID == "" {
-		return InvalidVolumeID, volumeID, status.Errorf(codes.InvalidArgument, "volume ID is required")
-	}
-
-	if strings.HasPrefix(volumeID, "name:") {
-		return NameAsVolumeID, volumeID[5:], nil
-	} else if strings.HasPrefix(volumeID, "uuid:") {
-		return UUIDAsVolumeID, volumeID[5:], nil
-	} else {
-		return InvalidVolumeID, volumeID, status.Errorf(codes.NotFound, "invalid volume ID: %s", volumeID)
 	}
 }

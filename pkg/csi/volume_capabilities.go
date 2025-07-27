@@ -41,6 +41,16 @@ func isValidCapability(c *csi.VolumeCapability) bool {
 		return false
 	}
 
+	switch c.GetAccessType().(type) {
+	case *csi.VolumeCapability_Block:
+		klog.V(2).InfoS("isValidCapability: block access type is not supported")
+		return false
+	case *csi.VolumeCapability_Mount:
+		// Continue
+	default:
+		return false
+	}
+
 	accessMode := c.GetAccessMode().GetMode()
 	switch accessMode {
 	case csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER:
