@@ -373,12 +373,12 @@ func migrateDisk(client xoa.Client, diskName, srUUID string) {
 		log.Fatalf("Failed to get VDIs: %v", err)
 	}
 
-	err = client.MigrateVDI(ctx, vdi.UUID, srUUID)
+	newVdiUUID, err := client.MigrateVDI(ctx, vdi.UUID, srUUID)
 	if err != nil {
 		log.Fatalf("Failed to migrate VDI: %v", err)
 	}
 
-	fmt.Printf("Successfully migrated disk '%s' to SR %s\n", diskName, srUUID)
+	fmt.Printf("Successfully migrated disk '%s' to SR %s (new VDI UUID: %s)\n", diskName, srUUID, newVdiUUID)
 }
 
 func resizeDisk(client xoa.Client, diskName string, newSize int64) {
