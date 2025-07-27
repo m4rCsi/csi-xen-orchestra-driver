@@ -21,6 +21,7 @@ import (
 
 var (
 	// Connection errors
+	ErrContextCancelled     = errors.New("context cancelled")
 	ErrConnectionError      = errors.New("connection error")
 	ErrInvalidArgument      = errors.New("invalid argument")
 	ErrAlreadyConnected     = errors.New("already connected")

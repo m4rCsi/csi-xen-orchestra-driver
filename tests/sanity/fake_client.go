@@ -290,8 +290,8 @@ func (f *FakeClient) CreateVDI(ctx context.Context, nameLabel, srUUID string, si
 	return vdiUUID, nil
 }
 
-// EditVDI edits a VDI in the fake storage
-func (f *FakeClient) EditVDI(ctx context.Context, uuid string, nameLabel string, size int64) error {
+// SetVDIDescription sets the description of a VDI in the fake storage
+func (f *FakeClient) EditVDI(ctx context.Context, uuid string, name, description *string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -304,11 +304,11 @@ func (f *FakeClient) EditVDI(ctx context.Context, uuid string, nameLabel string,
 		return xoa.ErrNoSuchObject
 	}
 
-	if nameLabel != "" {
-		vdi.NameLabel = nameLabel
+	if description != nil {
+		vdi.NameDescription = *description
 	}
-	if size > 0 {
-		vdi.Size = size
+	if name != nil {
+		vdi.NameLabel = *name
 	}
 
 	return nil
@@ -485,6 +485,24 @@ func (f *FakeClient) AttachVDI(ctx context.Context, vmUUID, vdiUUID string, mode
 	return &vbd.Attached, nil
 }
 
+func (f *FakeClient) ConnectVBDAndWaitForDevice(ctx context.Context, vbdUUID string) (*xoa.VBD, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if err := f.checkConnection(); err != nil {
+		return nil, err
+	}
+
+	vbd, exists := f.vbds[vbdUUID]
+	if !exists {
+		return nil, xoa.ErrNoSuchObject
+	}
+
+	vbd.Attached = true
+	klog.V(2).InfoS("Connected fake VBD", "vbdUUID", vbdUUID)
+	return vbd, nil
+}
+
 func (f *FakeClient) AttachVDIAndWaitForDevice(ctx context.Context, vmUUID, vdiUUID string, mode string) (*xoa.VBD, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -580,23 +598,32 @@ func (f *FakeClient) DeleteVBD(ctx context.Context, vbdUUID string) error {
 	return nil
 }
 
-func (f *FakeClient) MigrateVDI(ctx context.Context, vdiUUID, srUUID string) error {
+func (f *FakeClient) MigrateVDI(ctx context.Context, vdiUUID, srUUID string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	if err := f.checkConnection(); err != nil {
-		return err
+		return "", err
 	}
 
 	vdi, exists := f.vdis[vdiUUID]
 	if !exists {
-		return xoa.ErrNoSuchObject
+		return "", xoa.ErrNoSuchObject
 	}
 
-	vdi.SR = srUUID
+	newVdiUUID := generateUUID("vdi")
+	f.vdis[newVdiUUID] = &xoa.VDI{
+		UUID:      newVdiUUID,
+		NameLabel: vdi.NameLabel,
+		Size:      vdi.Size,
+		Type:      vdi.Type,
+		SR:        srUUID,
+	}
+	delete(f.vdis, vdiUUID)
+
 	klog.V(2).InfoS("Migrated fake VDI", "vdiUUID", vdiUUID, "srUUID", srUUID)
 
-	return nil
+	return newVdiUUID, nil
 }
 
 // checkConnection checks if the client is connected

@@ -45,10 +45,10 @@ type Client interface {
 	GetVDIByUUID(ctx context.Context, uuid string) (*VDI, error)
 	GetVDIByName(ctx context.Context, name string) (*VDI, error)
 	CreateVDI(ctx context.Context, nameLabel, srUUID string, size int64) (string, error)
-	EditVDI(ctx context.Context, uuid string, nameLabel string, size int64) error
+	EditVDI(ctx context.Context, uuid string, name *string, description *string) error
 	ResizeVDI(ctx context.Context, uuid string, size int64) error
 	DeleteVDI(ctx context.Context, uuid string) error
-	MigrateVDI(ctx context.Context, vdiUUID, srUUID string) error
+	MigrateVDI(ctx context.Context, vdiUUID, srUUID string) (string, error)
 
 	// SR (Storage Repository) operations
 	GetSRs(ctx context.Context, filter map[string]any) ([]SR, error)
@@ -66,6 +66,7 @@ type Client interface {
 	AttachVDIAndWaitForDevice(ctx context.Context, vmUUID, vdiUUID string, mode string) (*VBD, error)
 	DisconnectVBD(ctx context.Context, vbdUUID string) error
 	ConnectVBD(ctx context.Context, vbdUUID string) error
+	ConnectVBDAndWaitForDevice(ctx context.Context, vbdUUID string) (*VBD, error)
 	DeleteVBD(ctx context.Context, vbdUUID string) error
 }
 
@@ -94,14 +95,15 @@ type VM struct {
 
 // VDI represents a virtual disk image
 type VDI struct {
-	UUID      string `json:"uuid"`
-	NameLabel string `json:"name_label"`
-	Size      int64  `json:"size"`
-	Type      string `json:"type"`
-	SR        string `json:"$sr,omitempty"`
-	Pool      string `json:"$pool,omitempty"`
-	ReadOnly  bool   `json:"read_only,omitempty"`
-	Sharable  bool   `json:"sharable,omitempty"`
+	UUID            string `json:"uuid"`
+	NameLabel       string `json:"name_label"`
+	NameDescription string `json:"name_description"`
+	Size            int64  `json:"size"`
+	Type            string `json:"type"`
+	SR              string `json:"$sr,omitempty"`
+	Pool            string `json:"$pool,omitempty"`
+	ReadOnly        bool   `json:"read_only,omitempty"`
+	Sharable        bool   `json:"sharable,omitempty"`
 }
 
 // SR represents a storage repository
