@@ -24,6 +24,7 @@ Under active Development. Not ready to be used in anger!
 
 ## Development References
 - https://kubernetes-csi.github.io/
+- https://github.com/container-storage-interface/spec/blob/master/spec.md
 - https://arslan.io/2018/06/21/how-to-write-a-container-storage-interface-csi-plugin/
 
 
