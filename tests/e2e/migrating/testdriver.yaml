@@ -4,13 +4,16 @@ DriverInfo:
   Name: csi.xen-orchestra.marcsi.ch
   Capabilities:
     persistence: true
+    controllerExpansion: true
+    onlineExpansion: false
     offlineExpansion: true
-  # SupportedFsType:
-    # ext4: true
-    # ext3: true
-    # xfs: true
+    readWriteOncePod: true
+  SupportedFsType: {"ext4", "ext3", "xfs"}
   SupportedSizeRange:
     Min: 1Gi
     Max: 10Gi
   RequiredAccessModes:
     - ReadWriteOnce
+  StressTestOptions:
+    NumPods: 5
+    NumRestarts: 5
