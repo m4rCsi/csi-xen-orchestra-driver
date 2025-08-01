@@ -8,11 +8,16 @@ I am running this against a Talos cluster, and some tests don't seem to be worki
 
 ## Requirements
 
-* Existing Testing Cluster that is the default context in kubeconfig
+* Existing Testing Cluster that is the default context in kubeconfig (set E2EKUBECONFIG)
 * Driver deployed (no storageclass necessary)
 
 ## Run
 
 ```bash
+# - Setup cluster
+# install  csi-xen-orchestra-driver
+
+export E2EKUBECONFIG=~/.kube/config-e2e
+
 make test
 ```
