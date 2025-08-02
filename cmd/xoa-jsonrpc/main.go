@@ -157,6 +157,8 @@ func main() {
 	case "list-disks":
 		listDisks(client, diskName)
 
+	case "list-srs":
+		listSRs(client)
 	default:
 		log.Fatalf("Unknown command: %s. Valid commands are: create-disk, attach-disk, detach-disk, check-attachment, resize-disk, list-disks", *command)
 	}
@@ -405,4 +407,16 @@ func resizeDisk(client xoa.Client, diskName string, newSize int64) {
 	}
 
 	fmt.Printf("Successfully resized disk '%s' to %d bytes\n", diskName, newSize)
+}
+
+func listSRs(client xoa.Client) {
+	ctx := context.Background()
+	sr, err := client.GetSRs(ctx, nil)
+	if err != nil {
+		log.Fatalf("Failed to get SRs: %v", err)
+	}
+
+	for _, sr := range sr {
+		fmt.Printf("SR: %+v\n", sr)
+	}
 }
