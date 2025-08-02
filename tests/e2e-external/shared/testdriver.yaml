@@ -1,5 +1,5 @@
 StorageClass:
-  FromFile: ./e2e/shared/storageclass.yaml
+  FromFile: ./e2e-external/shared/storageclass.yaml
 DriverInfo:
   Name: csi.xen-orchestra.marcsi.ch
   Capabilities:
