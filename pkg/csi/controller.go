@@ -168,7 +168,7 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 			vdiUUID = foundTemporaryVDI.UUID
 		}
 
-		err = cs.xoaClient.EditVDI(ctx, vdiUUID, ptr.To(diskName), nil)
+		err = cs.xoaClient.EditVDI(ctx, vdiUUID, ptr.To(diskName), ptr.To(""))
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to edit disk: %v", err)
 		}
@@ -320,14 +320,15 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 			return nil, status.Errorf(codes.Internal, "failed to get VDI: %v", err)
 		}
 
-		migration, err := FromVDIDescription(foundVdi.NameDescription)
+		metadata, err := EmbeddedVDIMetadataFromDescription(foundVdi.NameDescription)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to get migration data from VDI description: %v", err)
 		}
-		if migration != nil {
-			if migration.TargetSRUUID() != foundVdi.SR {
+		switch m := metadata.(type) {
+		case *Migration:
+			if m.TargetSRUUID() != foundVdi.SR {
 				// Migration is still in progress, so we can't use the VDI.
-				return nil, status.Errorf(codes.Unavailable, "VDI is being migrated to %s", migration.TargetSRUUID())
+				return nil, status.Errorf(codes.Unavailable, "VDI is being migrated to %s", m.TargetSRUUID())
 			}
 
 			// At this point only one VDI exists, and it is already on the right SR. So we can remove the migration description.
@@ -336,10 +337,25 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 				return nil, status.Errorf(codes.Internal, "failed to set VDI description: %v", err)
 			}
 
-			klog.Infof("VDI %s finished migration to %s", foundVdi.UUID, migration.TargetSRUUID())
+			klog.Infof("VDI %s finished migration to %s", foundVdi.UUID, m.TargetSRUUID())
+			vdi = foundVdi
+		case *DeletionCandidate:
+			// We can safely ignore/remove this deletion candidate.
+			// This can happen when the Cleanup runs and attaches a deletion candidate on the temporary disk, but it is renamed to the final disk name,
+			// through the CreateVolume call at the same time.
+			err = cs.xoaClient.EditVDI(ctx, foundVdi.UUID, nil, ptr.To(""))
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to set VDI description: %v", err)
+			}
+			vdi = foundVdi
+		case *NoMetadata:
+			// No metadata, so we can use the VDI.
+			// This is the case for a newly created VDI.
+			vdi = foundVdi
+		default:
+			return nil, status.Errorf(codes.Internal, "unhandled VDI metadata type: %T", m)
 		}
 
-		vdi = foundVdi
 	case UUIDAsVolumeID:
 		vdiUUID := volumeIDValue
 		foundVdi, err := cs.xoaClient.GetVDIByUUID(ctx, vdiUUID)

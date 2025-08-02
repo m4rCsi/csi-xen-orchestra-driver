@@ -112,3 +112,12 @@ Supported Parameters:
 - `type`: `shared` or `localmigrating`
 - `srUUID`: UUID of a Storage Repository (required for mode=`shared`)
 - `srsWithTag`: which local Storage Repositories should be used (required for mode=`localmigrating`)
+
+
+## Temp Cleanup
+
+If the timeout of the creation of disks is set too low, it is possible for leakage to occur during the disk creation process.
+For this reason the driver has a 2-step process when creating volumes and creates them under a temporary name.
+This temporary name is prefixed with `csi-temp-`. 
+
+There is a cleanup mechanism built into the controller, that will delete those leaked temporary disks. However, this is disabled by default and needs to be enabled with `--temp-cleanup=true`.

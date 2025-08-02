@@ -38,6 +38,7 @@ type DriverOptions struct {
 	Endpoint           string
 	Mode               Mode
 	DriverNameOverride string
+	TempCleanup        bool
 }
 
 // Mode is the operating mode of the CSI driver.
@@ -60,10 +61,11 @@ type Driver struct {
 	nodeMetadata NodeMetadataGetter
 	mounter      Mounter
 
-	server     *grpc.Server
-	controller *ControllerService
-	identity   *IdentityService
-	node       *NodeService
+	server      *grpc.Server
+	controller  *ControllerService
+	identity    *IdentityService
+	node        *NodeService
+	tempCleanup *TempCleanup
 }
 
 func NewDriver(opts *DriverOptions, xoaClient xoa.Client, nodeMetadata NodeMetadataGetter, mounter Mounter) *Driver {
@@ -127,8 +129,15 @@ func (d *Driver) Run() error {
 		if d.xoaClient == nil {
 			return fmt.Errorf("xoaClient is required for controller mode")
 		}
+		klog.InfoS("Starting controller service")
 		d.controller = NewControllerService(d, d.xoaClient)
 		csi.RegisterControllerServer(d.server, d.controller)
+
+		if d.options.TempCleanup {
+			klog.InfoS("Starting temp cleanup service")
+			d.tempCleanup = NewTempCleanup(d.xoaClient)
+			go d.tempCleanup.Run()
+		}
 	}
 
 	if d.options.Mode == AllMode || d.options.Mode == NodeMode {
@@ -144,6 +153,7 @@ func (d *Driver) Run() error {
 			return fmt.Errorf("mounter is required for node mode")
 		}
 
+		klog.InfoS("Starting node service")
 		d.node = NewNodeService(d, d.mounter, nodeID)
 		csi.RegisterNodeServer(d.server, d.node)
 	}
@@ -160,6 +170,9 @@ func (d *Driver) Run() error {
 }
 
 func (d *Driver) Stop() {
+	if d.tempCleanup != nil {
+		d.tempCleanup.Stop()
+	}
 	d.server.Stop()
 }
 

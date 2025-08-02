@@ -127,7 +127,7 @@ var _ = Describe("Xen CSI Driver", func() {
 		config.TestVolumeSize = 1024 * 1024 * 1024 * 10 // 10GB
 		config.TestVolumeAccessType = "mount"
 		config.TestVolumeParameters = map[string]string{
-			"type":       "local-migrating",
+			"type":       "localmigrating",
 			"srsWithTag": "k8s-localmigrating",
 		}
 

@@ -4,8 +4,8 @@ K8S_TEST_VERSION ?= v1.30.1
 GINKGO = bin/ginkgo
 E2E = bin/e2e.test
 
-TEST_ARGS = -v -nodes=5
-STRESS_ARGS = -v
+TEST_ARGS = -nodes=5
+STRESS_ARGS = 
 
 
 # Function to check if E2EKUBECONFIG is set
@@ -68,3 +68,5 @@ stress-localmigrating: stress
 test-all: test-shared test-localmigrating
 stress-all: stress-shared stress-localmigrating
 all: test-all stress-all
+localmigrating: test-localmigrating stress-localmigrating
+shared: test-shared stress-shared
