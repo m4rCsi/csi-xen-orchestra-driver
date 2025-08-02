@@ -38,7 +38,9 @@ type DriverOptions struct {
 	Endpoint           string
 	Mode               Mode
 	DriverNameOverride string
-	TempCleanup        bool
+
+	TempCleanup    bool
+	DiskNamePrefix string
 }
 
 // Mode is the operating mode of the CSI driver.
@@ -66,6 +68,8 @@ type Driver struct {
 	identity    *IdentityService
 	node        *NodeService
 	tempCleanup *TempCleanup
+
+	diskNameGenerator *DiskNameGenerator
 }
 
 func NewDriver(opts *DriverOptions, xoaClient xoa.Client, nodeMetadata NodeMetadataGetter, mounter Mounter) *Driver {
@@ -76,11 +80,12 @@ func NewDriver(opts *DriverOptions, xoaClient xoa.Client, nodeMetadata NodeMetad
 
 	klog.InfoS("Driver", "name", name, "version", driverVersion)
 	d := &Driver{
-		driverName:   name,
-		options:      opts,
-		xoaClient:    xoaClient,
-		nodeMetadata: nodeMetadata,
-		mounter:      mounter,
+		driverName:        name,
+		options:           opts,
+		xoaClient:         xoaClient,
+		nodeMetadata:      nodeMetadata,
+		mounter:           mounter,
+		diskNameGenerator: NewDiskNameGenerator(opts.DiskNamePrefix),
 	}
 	d.identity = NewIdentityService(d)
 	return d
@@ -130,12 +135,12 @@ func (d *Driver) Run() error {
 			return fmt.Errorf("xoaClient is required for controller mode")
 		}
 		klog.InfoS("Starting controller service")
-		d.controller = NewControllerService(d, d.xoaClient)
+		d.controller = NewControllerService(d, d.xoaClient, d.diskNameGenerator)
 		csi.RegisterControllerServer(d.server, d.controller)
 
 		if d.options.TempCleanup {
 			klog.InfoS("Starting temp cleanup service")
-			d.tempCleanup = NewTempCleanup(d.xoaClient)
+			d.tempCleanup = NewTempCleanup(d.xoaClient, d.diskNameGenerator)
 			go d.tempCleanup.Run()
 		}
 	}

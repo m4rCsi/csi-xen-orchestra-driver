@@ -29,14 +29,16 @@ import (
 
 type ControllerService struct {
 	csi.UnimplementedControllerServer
-	driver    *Driver
-	xoaClient xoa.Client
+	driver            *Driver
+	xoaClient         xoa.Client
+	diskNameGenerator *DiskNameGenerator
 }
 
-func NewControllerService(driver *Driver, xoaClient xoa.Client) *ControllerService {
+func NewControllerService(driver *Driver, xoaClient xoa.Client, diskNameGenerator *DiskNameGenerator) *ControllerService {
 	return &ControllerService{
-		driver:    driver,
-		xoaClient: xoaClient,
+		driver:            driver,
+		xoaClient:         xoaClient,
+		diskNameGenerator: diskNameGenerator,
 	}
 }
 
@@ -65,8 +67,8 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 	if volumeName == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "disk name is required")
 	}
-	diskName := DiskNameFromVolumeName(volumeName)
-	temporaryDiskName := TemporaryDiskNameFromVolumeName(volumeName)
+	diskName := cs.diskNameGenerator.FromVolumeName(volumeName)
+	temporaryDiskName := cs.diskNameGenerator.TemporaryFromVolumeName(volumeName)
 
 	if req.VolumeContentSource != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "volume content source is not supported")
@@ -246,7 +248,7 @@ func (cs *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVo
 	var vdiUUIDToDelete string
 	switch vidType {
 	case NameAsVolumeID:
-		diskName := DiskNameFromVolumeName(volumeIDValue)
+		diskName := cs.diskNameGenerator.FromVolumeName(volumeIDValue)
 		vdi, err := cs.xoaClient.GetVDIByName(ctx, diskName)
 		if errors.Is(err, xoa.ErrObjectNotFound) {
 			// volume already deleted
@@ -309,7 +311,7 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 	var vdi *xoa.VDI = nil
 	switch vidType {
 	case NameAsVolumeID:
-		diskName := DiskNameFromVolumeName(volumeIDValue)
+		diskName := cs.diskNameGenerator.FromVolumeName(volumeIDValue)
 		foundVdi, err := cs.xoaClient.GetVDIByName(ctx, diskName)
 		if errors.Is(err, xoa.ErrObjectNotFound) {
 			return nil, status.Errorf(codes.NotFound, "VDI not found")
@@ -540,7 +542,7 @@ func (cs *ControllerService) ControllerUnpublishVolume(ctx context.Context, req 
 	var vdiUUID string
 	switch vidType {
 	case NameAsVolumeID:
-		diskName := DiskNameFromVolumeName(volumeIDValue)
+		diskName := cs.diskNameGenerator.FromVolumeName(volumeIDValue)
 		vdi, err := cs.xoaClient.GetVDIByName(ctx, diskName)
 		if errors.Is(err, xoa.ErrObjectNotFound) {
 			// VDI not found, nothing to do
@@ -582,7 +584,7 @@ func (cs *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req
 
 	switch vidType {
 	case NameAsVolumeID:
-		diskName := DiskNameFromVolumeName(volumeIDValue)
+		diskName := cs.diskNameGenerator.FromVolumeName(volumeIDValue)
 		_, err := cs.xoaClient.GetVDIByName(ctx, diskName)
 		if errors.Is(err, xoa.ErrObjectNotFound) {
 			return nil, status.Errorf(codes.NotFound, "volume not found")
@@ -629,7 +631,7 @@ func (cs *ControllerService) ControllerExpandVolume(ctx context.Context, req *cs
 	var vdi *xoa.VDI = nil
 	switch vidType {
 	case NameAsVolumeID:
-		diskName := DiskNameFromVolumeName(volumeIDValue)
+		diskName := cs.diskNameGenerator.FromVolumeName(volumeIDValue)
 		foundVdi, err := cs.xoaClient.GetVDIByName(ctx, diskName)
 		if errors.Is(err, xoa.ErrObjectNotFound) {
 			return nil, status.Errorf(codes.NotFound, "volume not found")

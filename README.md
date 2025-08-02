@@ -95,6 +95,27 @@ tbA Proper Deployment. This is how we do it during development
 make deploy
 ```
 
+### Configuration Options
+
+The default values should just work for most. However there are a few things that can be configured:
+
+- controller argument: `--disk-name-prefix=csistaging-` : This is the prefix used for the diskname. Useful if you have multiple clusters running on the same pool. (default: `csi-`)
+- controller argument: `--temp-cleanup=true` : See Temp Cleanup Section (default: false)
+
+
+If using kustomize, this example patch demonstrate on how to patch the base kustomize:
+
+```yaml
+- patch: |-
+    - op: add
+      path: /spec/template/spec/containers/3/args/-
+      value: "--disk-name-prefix=csistaging-"
+  target:
+    kind: Deployment
+    name: csi-xen-orchestra-controller
+```
+
+
 ### Authentication with Xen Orchestra
 
 The driver needs access to the Xen Orchestra.

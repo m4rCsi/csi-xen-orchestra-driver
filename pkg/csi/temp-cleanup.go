@@ -16,7 +16,6 @@ package csi
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	xoa "github.com/m4rCsi/csi-xen-orchestra-driver/pkg/xoa"
@@ -34,14 +33,17 @@ type TempCleanup struct {
 	timer     *time.Ticker
 	ctx       context.Context
 	cancel    context.CancelFunc
+
+	diskNameGenerator *DiskNameGenerator
 }
 
-func NewTempCleanup(xoaClient xoa.Client) *TempCleanup {
+func NewTempCleanup(xoaClient xoa.Client, diskNameGenerator *DiskNameGenerator) *TempCleanup {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &TempCleanup{
-		xoaClient: xoaClient,
-		ctx:       ctx,
-		cancel:    cancel,
+		xoaClient:         xoaClient,
+		ctx:               ctx,
+		cancel:            cancel,
+		diskNameGenerator: diskNameGenerator,
 	}
 }
 
@@ -86,7 +88,7 @@ func (t *TempCleanup) cleanup(ctx context.Context) {
 	}
 
 	for _, vdi := range vdis {
-		if !strings.HasPrefix(vdi.NameLabel, VDIDiskPrefixTemporary) {
+		if !t.diskNameGenerator.IsTemporaryDisk(vdi.NameLabel) {
 			continue
 		}
 		klog.InfoS("Processing temporary VDI", "vdi", vdi.NameLabel)

@@ -28,11 +28,12 @@ import (
 )
 
 var (
-	endpoint     = flag.String("endpoint", "unix:///tmp/csi.sock", "CSI endpoint")
-	controller   = flag.Bool("controller", false, "Run as controller service")
-	node         = flag.Bool("node", false, "Run as node service")
-	nameOverride = flag.String("driver-name-override", "", "Driver name override")
-	tempCleanup  = flag.Bool("temp-cleanup", false, "Run temporary cleanup")
+	endpoint       = flag.String("endpoint", "unix:///tmp/csi.sock", "CSI endpoint")
+	controller     = flag.Bool("controller", false, "Run as controller service")
+	node           = flag.Bool("node", false, "Run as node service")
+	nameOverride   = flag.String("driver-name-override", "", "Driver name override")
+	diskNamePrefix = flag.String("disk-name-prefix", "", "Disk name prefix")
+	tempCleanup    = flag.Bool("temp-cleanup", false, "Run temporary cleanup")
 )
 
 func main() {
@@ -87,6 +88,7 @@ func main() {
 			Mode:               mode,
 			DriverNameOverride: *nameOverride,
 			TempCleanup:        *tempCleanup,
+			DiskNamePrefix:     *diskNamePrefix,
 		},
 		xoaClient,
 		nodeMetadata,

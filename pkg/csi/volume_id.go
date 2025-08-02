@@ -28,17 +28,13 @@ const (
 	UUIDAsVolumeID  VolumeIDType = "uuid"
 	InvalidVolumeID VolumeIDType = "invalid"
 )
-const (
-	VDIDiskPrefix          = "csi-"
-	VDIDiskPrefixTemporary = "csi-temp-"
-)
 
 func CreateVolumeIDWithName(name string) string {
 	return "name:" + name
 }
 
 func CreateVolumeIDWithUUID(uuid string) string {
-	return "uuid:" + uuid
+	return uuid
 }
 
 func ParseVolumeID(volumeID string) (VolumeIDType, string, error) {
@@ -48,18 +44,7 @@ func ParseVolumeID(volumeID string) (VolumeIDType, string, error) {
 
 	if strings.HasPrefix(volumeID, "name:") {
 		return NameAsVolumeID, volumeID[5:], nil
-	} else if strings.HasPrefix(volumeID, "uuid:") {
-		return UUIDAsVolumeID, volumeID[5:], nil
 	} else {
-		// This is a UUID, we can use it directly
 		return UUIDAsVolumeID, volumeID, nil
 	}
-}
-
-func DiskNameFromVolumeName(volumeName string) string {
-	return VDIDiskPrefix + volumeName
-}
-
-func TemporaryDiskNameFromVolumeName(volumeName string) string {
-	return VDIDiskPrefixTemporary + volumeName
 }
