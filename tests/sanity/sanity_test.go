@@ -75,7 +75,7 @@ func setup() {
 		Fail("Failed to connect to fake client")
 	}
 
-	fakeClient.InjectSR(&xoa.SR{UUID: FakeSRUUID})
+	fakeClient.InjectSR(&xoa.SR{UUID: FakeSRUUID, Tags: []string{"k8s-localmigrating"}, Size: 1024 * 1024 * 1024 * 100, Usage: 0}) // SR with 100GB of free space
 	fakeClient.InjectVM(&xoa.VM{UUID: FakeNodeID})
 	fakeNodeMetadata := &FakeNodeMetadata{NodeID: FakeNodeID}
 
@@ -118,7 +118,7 @@ func TestSanity(t *testing.T) {
 
 var _ = Describe("Xen CSI Driver", func() {
 
-	Describe("Sanity Migrating Storage", func() {
+	Describe("Sanity 'localmigrating' Storage", func() {
 		config := csisanity.NewTestConfig()
 		// Set configuration options as needed
 		config.Address = csiSocketPath
@@ -127,8 +127,8 @@ var _ = Describe("Xen CSI Driver", func() {
 		config.TestVolumeSize = 1024 * 1024 * 1024 * 10 // 10GB
 		config.TestVolumeAccessType = "mount"
 		config.TestVolumeParameters = map[string]string{
-			"type":    "migrating",
-			"srUUIDs": FakeSRUUID,
+			"type":       "local-migrating",
+			"srsWithTag": "k8s-localmigrating",
 		}
 
 		config.CheckPath = func(path string) (csisanity.PathKind, error) {
@@ -150,7 +150,7 @@ var _ = Describe("Xen CSI Driver", func() {
 		csisanity.GinkgoTest(&config)
 	})
 
-	Describe("Sanity Shared Storage", func() {
+	Describe("Sanity 'shared' Storage", func() {
 		config := csisanity.NewTestConfig()
 		// Set configuration options as needed
 		config.Address = csiSocketPath

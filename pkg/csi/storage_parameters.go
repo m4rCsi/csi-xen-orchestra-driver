@@ -15,23 +15,25 @@
 package csi
 
 import (
-	"strings"
-
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 type StorageType string
+type StorageRepositorySelection string
 
 const (
-	StorageTypeShared    StorageType = "shared"
-	StorageTypeMigrating StorageType = "migrating"
+	StorageTypeShared         StorageType = "shared"
+	StorageTypeLocalMigrating StorageType = "localmigrating"
+
+	StorageRepositorySelectionTag  StorageRepositorySelection = "tag"
+	StorageRepositorySelectionUUID StorageRepositorySelection = "uuid"
 )
 
 type storageParmaters struct {
-	Type    StorageType
-	SRUUID  string
-	SRUUIDs []string
+	Type       StorageType
+	SRUUID     string
+	SRsWithTag string
 }
 
 func LoadStorageParametersFromVolumeContext(volumeContext map[string]string) (*storageParmaters, error) {
@@ -39,14 +41,19 @@ func LoadStorageParametersFromVolumeContext(volumeContext map[string]string) (*s
 	storageType := StorageType(volumeContext["type"])
 	storageParams.Type = storageType
 	switch storageType {
-	case StorageTypeMigrating:
-		storageParams.SRUUIDs = strings.Split(volumeContext["srUUIDs"], ",")
+	case StorageTypeLocalMigrating:
+		storageParams.SRsWithTag = volumeContext["srsWithTag"]
+		if storageParams.SRsWithTag == "" {
+			return nil, status.Errorf(codes.InvalidArgument, "srsWithTag is required")
+		}
 	case StorageTypeShared:
 		storageParams.SRUUID = volumeContext["srUUID"]
+		if storageParams.SRUUID == "" {
+			return nil, status.Errorf(codes.InvalidArgument, "srUUID is required")
+		}
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "invalid storage type: %s", storageType)
 	}
-
 	return storageParams, nil
 }
 
@@ -56,8 +63,8 @@ func (s *storageParmaters) GenerateVolumeContext() map[string]string {
 	}
 
 	switch s.Type {
-	case StorageTypeMigrating:
-		d["srUUIDs"] = strings.Join(s.SRUUIDs, ",")
+	case StorageTypeLocalMigrating:
+		d["srsWithTag"] = s.SRsWithTag
 	case StorageTypeShared:
 		d["srUUID"] = s.SRUUID
 	}
@@ -71,18 +78,14 @@ func LoadStorageParameters(parameters map[string]string) (*storageParmaters, err
 	storageType := StorageType(parameters["type"])
 	storageParams.Type = storageType
 	switch storageType {
-	case StorageTypeMigrating:
-		srUUIDs := parameters["srUUIDs"]
-		if srUUIDs == "" {
-			// TODO: Automode
-			// storageParams.SRUUIDs = []string{}
-			return nil, status.Errorf(codes.InvalidArgument, "srUUIDs is required")
-		} else {
-			storageParams.SRUUIDs = strings.Split(srUUIDs, ",")
-			if len(storageParams.SRUUIDs) == 0 {
-				return nil, status.Errorf(codes.InvalidArgument, "srUUIDs is required")
-			}
+	case StorageTypeLocalMigrating:
+		srsWithTag := parameters["srsWithTag"]
+
+		if srsWithTag == "" {
+			return nil, status.Errorf(codes.InvalidArgument, "srsWithTag is required")
 		}
+
+		storageParams.SRsWithTag = srsWithTag
 	case StorageTypeShared:
 		srUUID := parameters["srUUID"]
 		if srUUID == "" {
@@ -99,25 +102,20 @@ func LoadStorageParameters(parameters map[string]string) (*storageParmaters, err
 	return storageParams, nil
 }
 
-func (s *storageParmaters) getSRUUIDForCreation() string {
-	if s.Type == StorageTypeMigrating {
-		return s.SRUUIDs[0]
-	} else {
-		return s.SRUUID
-	}
-}
-
-func (s *storageParmaters) getSRUUIDs() ([]string, error) {
-	if s.Type == StorageTypeMigrating {
-		return s.SRUUIDs, nil
-	} else {
-		return []string{s.SRUUID}, nil
+func (s *storageParmaters) getSRSelection() (StorageRepositorySelection, string, error) {
+	switch s.Type {
+	case StorageTypeLocalMigrating:
+		return StorageRepositorySelectionTag, s.SRsWithTag, nil
+	case StorageTypeShared:
+		return StorageRepositorySelectionUUID, s.SRUUID, nil
+	default:
+		return "", "", status.Errorf(codes.InvalidArgument, "invalid storage type: %s", s.Type)
 	}
 }
 
 func (s *storageParmaters) VolumeIDType() VolumeIDType {
 	switch s.Type {
-	case StorageTypeMigrating:
+	case StorageTypeLocalMigrating:
 		// Because the UUID changes when we migrate the volume to the other SRs
 		// we use the name as the volume ID (which stays the same)
 		// However, this is less robust than using the UUID, because the name is not unique

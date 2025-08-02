@@ -52,6 +52,7 @@ type Client interface {
 
 	// SR (Storage Repository) operations
 	GetSRs(ctx context.Context, filter map[string]any) ([]SR, error)
+	GetSRsWithTag(ctx context.Context, tag string) ([]SR, error)
 	GetOneSR(ctx context.Context, filter map[string]any) (*SR, error)
 	GetSRByUUID(ctx context.Context, uuid string) (*SR, error)
 
@@ -108,14 +109,15 @@ type VDI struct {
 
 // SR represents a storage repository
 type SR struct {
-	UUID                string `json:"uuid"`
-	NameLabel           string `json:"name_label"`
-	Type                string `json:"type"`
-	PhysicalSize        int64  `json:"physical_size"`
-	VirtualAllocation   int64  `json:"virtual_allocation,omitempty"`
-	PhysicalUtilisation int64  `json:"physical_utilisation,omitempty"`
-	Pool                string `json:"$pool,omitempty"`
-	Host                string `json:"$container,omitempty"`
+	UUID          string   `json:"uuid"`
+	NameLabel     string   `json:"name_label"`
+	SRType        string   `json:"SR_type"`
+	PhysicalUsage int64    `json:"physical_usage,omitempty"`
+	Pool          string   `json:"$poolId,omitempty"`
+	Host          string   `json:"$container,omitempty"`
+	Size          int64    `json:"size,omitempty"`
+	Usage         int64    `json:"usage,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
 }
 
 // VBD represents a Virtual Block Device (connection between VDI and VM)

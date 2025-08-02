@@ -1,10 +1,10 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: xoa-migrating
+  name: xoa-local-migrating
 provisioner: csi.xen-orchestra.marcsi.ch
 parameters:
   csi.storage.k8s.io/fstype: ext4
-  type: migrating
-  srUUIDs: 5e653748-9223-c319-7cb4-f6e20384de61,c17dba30-e17a-f349-6316-56f20478992e
+  type: localmigrating
+  srsWithTag: k8s-localmigrating
 allowVolumeExpansion: true

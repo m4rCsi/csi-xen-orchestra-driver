@@ -17,6 +17,7 @@ package sanity
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/google/uuid"
@@ -369,6 +370,23 @@ func (f *FakeClient) GetSRs(ctx context.Context, filter map[string]any) ([]xoa.S
 	srs := make([]xoa.SR, 0, len(f.srs))
 	for _, sr := range f.srs {
 		srs = append(srs, *sr)
+	}
+	return srs, nil
+}
+
+func (f *FakeClient) GetSRsWithTag(ctx context.Context, tag string) ([]xoa.SR, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	if err := f.checkConnection(); err != nil {
+		return nil, err
+	}
+
+	srs := make([]xoa.SR, 0, len(f.srs))
+	for _, sr := range f.srs {
+		if slices.Contains(sr.Tags, tag) {
+			srs = append(srs, *sr)
+		}
 	}
 	return srs, nil
 }

@@ -34,8 +34,8 @@ test: bin
 test-shared: TESTDRIVER=../shared/testdriver.yaml
 test-shared: test
 
-test-migrating: TESTDRIVER=../migrating/testdriver.yaml
-test-migrating: test
+test-localmigrating: TESTDRIVER=../localmigrating/testdriver.yaml
+test-localmigrating: test
 
 # During Development, we can run the test with a specific focus
 # test-directed: bin
@@ -47,4 +47,4 @@ test-migrating: test
 # 		-storage.testdriver=$(CURDIR)/shared/testdriver.yaml \
 # 		--kubeconfig=$(E2EKUBECONFIG)
 
-test-all: test-shared test-migrating
+test-all: test-shared test-localmigrating

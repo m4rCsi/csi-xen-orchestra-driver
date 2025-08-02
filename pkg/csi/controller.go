@@ -17,6 +17,7 @@ package csi
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	xoa "github.com/m4rCsi/csi-xen-orchestra-driver/pkg/xoa"
@@ -113,10 +114,9 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 	if vdiUUID == "" {
 		// Create: Volume does not exist, we need to create it
 
-		// We need to create a temporary disk with a different name to avoid race conditions.
+		// We create a disk with a temporary name as a first step.
 		// A disk creation can take a long time and we might reach the timeout.
 		// If this is the case, a new creation disk will be started, and we don't have a good way to know if there is one already underway.
-		// Having a temporary disk name will not remove this problem, but in the worst case we will have a disk that is not used.
 		// With this prefix, we will be able to see if there are any temporary disks and remove them.
 		// TODO: Implement a cleanup mechanism to remove temporary disks.
 
@@ -134,14 +134,36 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 			return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
 		}
 
-		var srUUID = storageParams.getSRUUIDForCreation()
+		var pickedSRUUID string = ""
+		srSelectionType, srSelectionValue, err := storageParams.getSRSelection()
+		switch srSelectionType {
+		case StorageRepositorySelectionTag:
+			localSrs, err := cs.getSRsWithTag(ctx, srSelectionValue)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to get local SRs: %v", err)
+			}
+			if len(localSrs) == 0 {
+				return nil, status.Errorf(codes.Internal, "no local SRs found with tag: %s", srSelectionValue)
+			}
+			bestSR, err := pickBestSRForDisk(localSrs, capacity)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to pick SR for disk: %v", err)
+			}
+			pickedSRUUID = bestSR.UUID
+		case StorageRepositorySelectionUUID:
+			pickedSRUUID = srSelectionValue
+		}
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get selected SR UUIDs: %v", err)
+		}
+
 		if foundTemporaryVDI == nil {
-			vdicreated, err := cs.xoaClient.CreateVDI(ctx, temporaryDiskName, srUUID, capacity)
+			vdicreated, err := cs.xoaClient.CreateVDI(ctx, temporaryDiskName, pickedSRUUID, capacity)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "failed to create disk: %v", err)
 			}
 			vdiUUID = vdicreated
-			klog.Infof("Successfully created disk '%s' with UUID: %s", diskName, vdiUUID)
+			klog.Infof("Successfully created disk '%s' with UUID: %s", temporaryDiskName, vdiUUID)
 		} else {
 			vdiUUID = foundTemporaryVDI.UUID
 		}
@@ -169,6 +191,42 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 			VolumeContext: storageParams.GenerateVolumeContext(),
 		},
 	}, nil
+}
+
+func (cs *ControllerService) getSRsWithTag(ctx context.Context, tag string) ([]xoa.SR, error) {
+	srs, err := cs.xoaClient.GetSRsWithTag(ctx, tag)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get SRs with tag: %v", err)
+	}
+
+	return srs, nil
+}
+
+func filterSrsForHost(srs []xoa.SR, host string) []xoa.SR {
+	filteredSrs := make([]xoa.SR, 0)
+	for _, sr := range srs {
+		if sr.Host == host {
+			filteredSrs = append(filteredSrs, sr)
+		}
+	}
+	return filteredSrs
+}
+
+func pickBestSRForDisk(srs []xoa.SR, capacity int64) (*xoa.SR, error) {
+	// Then pick the SR with the most free space
+	bestSR := srs[0]
+	for _, sr := range srs {
+		if sr.Usage < bestSR.Usage {
+			bestSR = sr
+		}
+	}
+
+	// Check if the best SR has enough space for the disk
+	if bestSR.Usage+capacity > bestSR.Size {
+		return nil, fmt.Errorf("no SR has enough space for the disk: %s", bestSR.UUID)
+	}
+
+	return &bestSR, nil
 }
 
 func (cs *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
@@ -350,44 +408,45 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 	switch storageParams.Type {
 	case StorageTypeShared:
 		// Nothing to do here, we can use the VDI directly
-	case StorageTypeMigrating:
+	case StorageTypeLocalMigrating:
 		// Figure out which SR to use for the host
-		host := vm.Host
-		srUUIDs := storageParams.SRUUIDs
-		var srForHost *xoa.SR = nil
-		for _, srUUID := range srUUIDs {
-			sr, err := cs.xoaClient.GetSRByUUID(ctx, srUUID)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to get SR: %v", err)
-			}
-			if sr.Host == host {
-				srForHost = sr
-				break
-			}
+		srSelectionType, srSelectionValue, err := storageParams.getSRSelection()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get SR selection: %v", err)
 		}
-		if srForHost == nil {
-			return nil, status.Errorf(codes.Internal, "SR not found for host: %s", host)
+		if srSelectionType != StorageRepositorySelectionTag {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid SR selection type: %s", srSelectionType)
+		}
+		localSrs, err := cs.getSRsWithTag(ctx, srSelectionValue)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get local SRs: %v", err)
 		}
 
-		klog.Infof("SR found for host %s: %+v", host, srForHost)
+		localSrs = filterSrsForHost(localSrs, vm.Host)
+		pickedSR, err := pickBestSRForDisk(localSrs, vdi.Size)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to pick SR for disk: %v", err)
+		}
 
-		if vdi.SR == srForHost.UUID {
-			klog.Infof("VDI %s is already on SR %s", vdi.UUID, srForHost.UUID)
+		klog.Infof("SR found for host %s: %+v", vm.Host, pickedSR)
+
+		if vdi.SR == pickedSR.UUID {
+			klog.Infof("VDI %s is already on SR %s", vdi.UUID, pickedSR.UUID)
 		} else {
-			migration := NewMigration(srForHost.UUID)
+			migration := NewMigration(pickedSR.UUID)
 			err := cs.xoaClient.EditVDI(ctx, vdi.UUID, nil, ptr.To(migration.ToVDIDescription()))
 			if err != nil {
 				klog.Errorf("failed to set VDI description: %v", err)
 				return nil, status.Errorf(codes.Internal, "failed to set VDI description: %v", err)
 			}
 
-			klog.Infof("Migrating VDI %s to SR %s", vdi.UUID, srForHost.UUID)
-			newVdiUUID, err := cs.xoaClient.MigrateVDI(ctx, vdi.UUID, srForHost.UUID)
+			klog.Infof("Migrating VDI %s to SR %s", vdi.UUID, pickedSR.UUID)
+			newVdiUUID, err := cs.xoaClient.MigrateVDI(ctx, vdi.UUID, pickedSR.UUID)
 			if err != nil {
 				klog.Errorf("failed to migrate VDI: %v", err)
 				return nil, status.Errorf(codes.Internal, "failed to migrate VDI: %v", err)
 			}
-			klog.Infof("VDI %s migrated to SR %s (new VDI UUID: %s)", vdi.UUID, srForHost.UUID, newVdiUUID)
+			klog.Infof("VDI %s migrated to SR %s (new VDI UUID: %s)", vdi.UUID, pickedSR.UUID, newVdiUUID)
 
 			foundVdi, err := cs.xoaClient.GetVDIByUUID(ctx, newVdiUUID)
 			if errors.Is(err, xoa.ErrObjectNotFound) {
@@ -403,7 +462,7 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 				return nil, status.Errorf(codes.Internal, "failed to set VDI description: %v", err)
 			}
 
-			klog.Infof("VDI %s finished migration to %s", foundVdi.UUID, srForHost.UUID)
+			klog.Infof("VDI %s finished migration to %s", foundVdi.UUID, pickedSR.UUID)
 
 			// Replace the VDI with the new one
 			vdi = foundVdi

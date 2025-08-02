@@ -453,6 +453,12 @@ func (c *jsonRPCClient) GetOneSR(ctx context.Context, filter map[string]any) (*S
 	return &srs[0], nil
 }
 
+func (c *jsonRPCClient) GetSRsWithTag(ctx context.Context, tag string) ([]SR, error) {
+	return c.GetSRs(ctx, map[string]any{
+		"tags": []string{tag},
+	})
+}
+
 // GetSR retrieves a specific storage repository by UUID
 func (c *jsonRPCClient) GetSRByUUID(ctx context.Context, uuid string) (*SR, error) {
 	return c.GetOneSR(ctx, map[string]any{

@@ -26,7 +26,7 @@ This should work with any `shared` storage types, such as `NFS` and `iSCSI` etc.
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: xen-orchestra-storage
+  name: xoa-shared
 provisioner: csi.xen-orchestra.marcsi.ch
 parameters:
   type: shared
@@ -36,20 +36,21 @@ allowVolumeExpansion: true
 ```
 
 
-### Type: migrating
+### Type: localmigrating
 
 In this mode, it is expected that different SRs will be available on the hypvervisors that kubernetes nodes will be running on.
-Therefore `srUUIDs` needs to be populated with a comma seperated list of SR UUIDs, and it should span all hypvervisors where you will need this to work for.
+The Storage Repositories that should be used need to be tagged in Xen Orchestra, and then can be selected with the `srsWithTag` attribute.
+It is your responsability to make sure that on every hypvervisor there is at least one local storage repository tagged with the right tag.
 
 ```yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: xoa-migrating
+  name: xoa-localmigrating
 provisioner: csi.xen-orchestra.marcsi.ch
 parameters:
-  type: migrating
-  srUUIDs: 5e653748-9223-c319-7cb4-f6e20384de61,c17dba30-e17a-f349-6316-56f20478992e
+  type: localmigrating
+  srsWithTag: k8s-localmigrating
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
 ```
@@ -108,6 +109,6 @@ allowVolumeExpansion: true
 
 Supported Parameters:
 - `csi.storage.k8s.io/fstype`: `ext3`,`ext4`,`xfs` (default: `ext4`)
-- `type`: `shared` or `migrating`
+- `type`: `shared` or `localmigrating`
 - `srUUID`: UUID of a Storage Repository (required for mode=`shared`)
-- `srUUIDs`: UUIDs of all Storage Repositories (required for mode=`migrating`)
+- `srsWithTag`: which local Storage Repositories should be used (required for mode=`localmigrating`)
