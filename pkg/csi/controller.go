@@ -422,6 +422,24 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 	}
 
 	switch storageParams.Type {
+	case StorageTypeStatic:
+		sr, err := cs.xoaClient.GetSRByUUID(ctx, vdi.SR)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get SR: %v", err)
+		}
+
+		// TODO: We need to implement topology
+		if sr.Shared {
+			// If we are shared, we need to check if the VM is in the same pool as the SR
+			if vm.Pool != sr.Pool {
+				return nil, status.Errorf(codes.FailedPrecondition, "VDI is not on the same pool as the VM")
+			}
+		} else {
+			// If we are not shared, we need to check if the VM is on the same host as the SR
+			if vm.Host != sr.Host {
+				return nil, status.Errorf(codes.FailedPrecondition, "VDI is not on the same host as the VM")
+			}
+		}
 	case StorageTypeShared:
 		// Nothing to do here, we can use the VDI directly
 	case StorageTypeLocalMigrating:

@@ -25,6 +25,7 @@ type StorageRepositorySelection string
 const (
 	StorageTypeShared         StorageType = "shared"
 	StorageTypeLocalMigrating StorageType = "localmigrating"
+	StorageTypeStatic         StorageType = "static"
 
 	StorageRepositorySelectionTag  StorageRepositorySelection = "tag"
 	StorageRepositorySelectionUUID StorageRepositorySelection = "uuid"
@@ -39,6 +40,9 @@ type storageParmaters struct {
 func LoadStorageParametersFromVolumeContext(volumeContext map[string]string) (*storageParmaters, error) {
 	storageParams := &storageParmaters{}
 	storageType := StorageType(volumeContext["type"])
+	if storageType == "" {
+		storageType = StorageTypeStatic
+	}
 	storageParams.Type = storageType
 	switch storageType {
 	case StorageTypeLocalMigrating:
@@ -51,6 +55,8 @@ func LoadStorageParametersFromVolumeContext(volumeContext map[string]string) (*s
 		if storageParams.SRUUID == "" {
 			return nil, status.Errorf(codes.InvalidArgument, "srUUID is required")
 		}
+	case StorageTypeStatic:
+		// We don't need any parameters
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "invalid storage type: %s", storageType)
 	}

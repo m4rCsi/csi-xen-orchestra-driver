@@ -112,6 +112,7 @@ type SR struct {
 	UUID          string   `json:"uuid"`
 	NameLabel     string   `json:"name_label"`
 	SRType        string   `json:"SR_type"`
+	Shared        bool     `json:"shared,omitempty"`
 	PhysicalUsage int64    `json:"physical_usage,omitempty"`
 	Pool          string   `json:"$poolId,omitempty"`
 	Host          string   `json:"$container,omitempty"`

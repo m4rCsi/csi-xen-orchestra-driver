@@ -51,7 +51,8 @@ func ParseVolumeID(volumeID string) (VolumeIDType, string, error) {
 	} else if strings.HasPrefix(volumeID, "uuid:") {
 		return UUIDAsVolumeID, volumeID[5:], nil
 	} else {
-		return InvalidVolumeID, volumeID, status.Errorf(codes.NotFound, "invalid volume ID: %s", volumeID)
+		// This is a UUID, we can use it directly
+		return UUIDAsVolumeID, volumeID, nil
 	}
 }
 
