@@ -19,7 +19,7 @@ Under active Development. Not ready to be used in anger!
 
 ### Type: shared
 
-In this mode, the SR will needs to be accessibly by all hypervisors that kubernetes nodes will be running on.
+In this mode, the SR will needs to be accessible by all hypervisors that kubernetes nodes will be running on.
 This should work with any `shared` storage types, such as `NFS` and `iSCSI` etc. However I have only been it able to test it with `NFS`.
 
 ```yaml
@@ -55,6 +55,28 @@ volumeBindingMode: Immediate
 allowVolumeExpansion: true
 ```
 
+### Static
+
+It's possible to directly use an existing disk. It can be referenced through the `volumeHandle` in the form of the UUID of the disk.
+Since topology is not supported, this will not always work. 
+If the disk is on a shared Storage Repository (e.g. nfs), then it will check if the k8s-node and the SR is on the same pool.
+If, however, the Storage Repistory is local to a hypervisor, the driver will check if the SR and the VM are on the same hypvervisor.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: test-static-pv
+  namespace: csi-test
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 5Gi
+  csi:
+    driver: csi.xen-orchestra.marcsi.ch
+    volumeHandle: fe852dc6-c0bf-45f4-b80f-938c01990ac3 # UUID of the Disk
+```
 
 
 ## Development References
