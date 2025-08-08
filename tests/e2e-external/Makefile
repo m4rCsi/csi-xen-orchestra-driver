@@ -7,16 +7,22 @@ E2E = bin/e2e.test
 # add -v to see more logs
 TEST_ARGS = -nodes=5
 STRESS_ARGS =
+FOCUS_ARGS = -v
+
+# Focus on a specific test
+## Example: (this one seems to be failing sometimes)
+FOCUS = csi.xen-orchestra.marcsi.ch.*should access to two volumes with different volume mode and retain data across pod recreation on different node
 
 # Supported driver configurations
 CONFIGS := shared localmigrating
 
 TEST_TARGETS := $(addprefix test-,$(CONFIGS))
 STRESS_TARGETS := $(addprefix stress-,$(CONFIGS))
-
+FOCUS_TARGETS := $(addprefix focus-,$(CONFIGS))
 
 test: $(TEST_TARGETS)
 stress: $(STRESS_TARGETS)
+focus: $(FOCUS_TARGETS)
 localmigrating: test-localmigrating stress-localmigrating
 shared: test-shared stress-shared
 all: test-all stress-all
@@ -54,6 +60,15 @@ stress-%: bin
 	$(check_e2e_kubeconfig)
 	$(GINKGO) $(STRESS_ARGS) \
 		--focus 'csi.xen-orchestra.marcsi.ch.*multiple pods should access different volumes repeatedly' \
+		$(E2E) -- \
+		-storage.testdriver=../$*/testdriver.yaml \
+		--kubeconfig=$(E2EKUBECONFIG)
+
+.PHONY: focus-%
+focus-%: bin
+	$(check_e2e_kubeconfig)
+	$(GINKGO) $(FOCUS_ARGS) \
+		--focus '$(FOCUS)' \
 		$(E2E) -- \
 		-storage.testdriver=../$*/testdriver.yaml \
 		--kubeconfig=$(E2EKUBECONFIG)
