@@ -1,2 +1,3 @@
 bin
 csi-xen-orchestra-credentials-secret.yaml
+deploy/kustomize/overlays/dev-local/

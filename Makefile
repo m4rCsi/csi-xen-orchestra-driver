@@ -1,5 +1,6 @@
 IMAGE_NAME := ghcr.io/m4rcsi/csi-xen-orchestra-driver
 IMAGE_TAG := dev
+OVERLAY_DIR := deploy/kustomize/overlays/dev
 
 .PHONY: build
 build:
@@ -11,7 +12,7 @@ build:
 update-kustomization:
 	@echo "Updating kustomization.yaml with image manifest digest..."
 	$(eval DIGEST := $(shell skopeo inspect docker://$(IMAGE_NAME):$(IMAGE_TAG) --format '{{.Digest}}'))
-	cd deploy/kustomize/overlays/dev && kustomize edit set image csi-xen-orchestra-driver=$(IMAGE_NAME)@$(DIGEST)
+	cd $(OVERLAY_DIR) && kustomize edit set image csi-xen-orchestra-driver=$(IMAGE_NAME)@$(DIGEST)
 	@echo "Updated kustomization.yaml with digest: $(DIGEST)"
 
 .PHONY: push
@@ -20,7 +21,7 @@ push: build
 
 .PHONY: deploy
 deploy: build push update-kustomization
-	kubectl apply -k deploy/kustomize/overlays/dev
+	kubectl apply -k $(OVERLAY_DIR)
 
 build-xoa-jsonrpc:
 	go build -o bin/xoa-jsonrpc ./cmd/xoa-jsonrpc/

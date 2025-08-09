@@ -127,6 +127,7 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 			// volume does not exist
 			// continue with creation
 		} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
+			// TODO, just pick up the first one and continue
 			err = cs.cleanupAllDisks(ctx, temporaryDiskName)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "multiple disks found with same name, but failed to cleanup temporary disks: %v", err)
