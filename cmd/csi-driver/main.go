@@ -24,13 +24,17 @@ import (
 
 	"github.com/m4rCsi/csi-xen-orchestra-driver/pkg/csi"
 	"github.com/m4rCsi/csi-xen-orchestra-driver/pkg/xoa"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
+
+	kclient "k8s.io/client-go/kubernetes"
 )
 
 var (
 	endpoint       = flag.String("endpoint", "unix:///tmp/csi.sock", "CSI endpoint")
 	controller     = flag.Bool("controller", false, "Run as controller service")
 	node           = flag.Bool("node", false, "Run as node service")
+	nodeName       = flag.String("node-name", "", "Node name")
 	nameOverride   = flag.String("driver-name-override", "", "Driver name override")
 	diskNamePrefix = flag.String("disk-name-prefix", "", "Disk name prefix")
 	tempCleanup    = flag.Bool("temp-cleanup", false, "Run temporary cleanup")
@@ -53,7 +57,7 @@ func main() {
 
 	// Optional dependencies, depending on mode
 	var xoaClient xoa.Client = nil
-	var nodeMetadata NodeMetadataGetter = nil
+	var nodeMetadata csi.NodeMetadataGetter = nil
 	var mounter csi.Mounter = nil
 
 	if mode == csi.ControllerMode || mode == csi.AllMode {
@@ -78,7 +82,21 @@ func main() {
 		defer xoaClient.Close()
 	}
 	if mode == csi.NodeMode || mode == csi.AllMode {
-		nodeMetadata = NewNodeMetadata()
+		if *nodeName == "" {
+			klog.Fatal("node-name is required")
+		}
+
+		config, err := rest.InClusterConfig()
+		if err != nil {
+			panic(err.Error())
+		}
+
+		kclient, err := kclient.NewForConfig(config)
+		if err != nil {
+			klog.Fatalf("failed to create kubernetes client: %v", err)
+		}
+
+		nodeMetadata = NewNodeMetadataFromKubernetes(kclient, *nodeName)
 		mounter = csi.NewSafeMounter()
 	}
 

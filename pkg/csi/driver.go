@@ -30,8 +30,14 @@ import (
 	"k8s.io/klog/v2"
 )
 
+type NodeMetadata struct {
+	NodeId string
+	HostId string
+	PoolId string
+}
+
 type NodeMetadataGetter interface {
-	GetNodeId() (string, error)
+	GetNodeMetadata() (*NodeMetadata, error)
 }
 
 type DriverOptions struct {
@@ -149,17 +155,13 @@ func (d *Driver) Run() error {
 		if d.nodeMetadata == nil {
 			return fmt.Errorf("nodeMetadata is required for node mode")
 		}
-		nodeID, err := d.nodeMetadata.GetNodeId()
-		if err != nil {
-			return fmt.Errorf("failed to get node ID: %v", err)
-		}
 
 		if d.mounter == nil {
 			return fmt.Errorf("mounter is required for node mode")
 		}
 
 		klog.InfoS("Starting node service")
-		d.node = NewNodeService(d, d.mounter, nodeID)
+		d.node = NewNodeService(d, d.mounter, d.nodeMetadata)
 		csi.RegisterNodeServer(d.server, d.node)
 	}
 

@@ -10,4 +10,19 @@ spec:
     storage: 5Gi
   csi:
     driver: csi.xen-orchestra.marcsi.ch
-    volumeHandle: 8d5b7ab2-db4f-4894-a444-567e61e4aa54 # this is the VDI UUID
+    volumeHandle: 56b09300-77da-421a-981b-503118399859 # this is the VDI UUID
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            # specify which pool the VDI disk belongs to
+            - key: topology.k8s.xenorchestra/pool_id
+              operator: In
+              values:
+                - 0bc99064-98ca-4e67-2a09-e168a5e020bb
+
+            # If the disk is only available on a specific host, if available through the whole pool, omit this
+            - key: topology.k8s.xenorchestra/host_id
+              operator: In
+              values:
+                - 70c5735a-5ca5-4c96-99b7-dc28f7211b40

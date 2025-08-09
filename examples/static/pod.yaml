@@ -4,6 +4,7 @@ metadata:
   name: test-pod
   namespace: csi-test
 spec:
+  terminationGracePeriodSeconds: 0
   containers:
   - name: test-container
     image: busybox:latest

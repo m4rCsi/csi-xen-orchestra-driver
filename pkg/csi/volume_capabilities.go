@@ -48,6 +48,7 @@ func isValidCapability(c *csi.VolumeCapability) bool {
 	case *csi.VolumeCapability_Mount:
 		// Continue
 	default:
+		klog.V(2).InfoS("isValidCapability: unknown access type", "accessType", c.GetAccessType())
 		return false
 	}
 

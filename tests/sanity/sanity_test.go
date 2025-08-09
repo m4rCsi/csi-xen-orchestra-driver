@@ -75,9 +75,9 @@ func setup() {
 		Fail("Failed to connect to fake client")
 	}
 
-	fakeClient.InjectSR(&xoa.SR{UUID: FakeSRUUID, Tags: []string{"k8s-localmigrating"}, Size: 1024 * 1024 * 1024 * 100, Usage: 0}) // SR with 100GB of free space
-	fakeClient.InjectVM(&xoa.VM{UUID: FakeNodeID})
-	fakeNodeMetadata := &FakeNodeMetadata{NodeID: FakeNodeID}
+	fakeClient.InjectSR(&xoa.SR{UUID: FakeSRUUID, Host: "fake-host-id", Pool: "fake-pool-id", Tags: []string{"k8s-localmigrating"}, Size: 1024 * 1024 * 1024 * 100, Usage: 0}) // SR with 100GB of free space
+	fakeClient.InjectVM(&xoa.VM{UUID: FakeNodeID, Host: "fake-host-id", Pool: "fake-pool-id"})
+	fakeNodeMetadata := &FakeNodeMetadata{NodeID: FakeNodeID, HostID: "fake-host-id", PoolID: "fake-pool-id"}
 
 	fakeMounter = NewFakeMounter()
 

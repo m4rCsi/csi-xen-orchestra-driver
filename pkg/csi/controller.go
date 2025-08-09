@@ -17,7 +17,6 @@ package csi
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	xoa "github.com/m4rCsi/csi-xen-orchestra-driver/pkg/xoa"
@@ -148,7 +147,7 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 			if len(localSrs) == 0 {
 				return nil, status.Errorf(codes.Internal, "no local SRs found with tag: %s", srSelectionValue)
 			}
-			bestSR, err := pickBestSRForDisk(localSrs, capacity)
+			bestSR, err := pickSRForLocalMigrating(localSrs, capacity, req.AccessibilityRequirements)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "failed to pick SR for disk: %v", err)
 			}
@@ -161,11 +160,11 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 		}
 
 		if foundTemporaryVDI == nil {
-			vdicreated, err := cs.xoaClient.CreateVDI(ctx, temporaryDiskName, pickedSRUUID, capacity)
+			vdicreatedUUID, err := cs.xoaClient.CreateVDI(ctx, temporaryDiskName, pickedSRUUID, capacity)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "failed to create disk: %v", err)
 			}
-			vdiUUID = vdicreated
+			vdiUUID = vdicreatedUUID
 			klog.Infof("Successfully created disk '%s' with UUID: %s", temporaryDiskName, vdiUUID)
 		} else {
 			vdiUUID = foundTemporaryVDI.UUID
@@ -174,6 +173,26 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 		err = cs.xoaClient.EditVDI(ctx, vdiUUID, ptr.To(diskName), ptr.To(""))
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to edit disk: %v", err)
+		}
+	}
+
+	var csiTopology []*csi.Topology
+
+	switch storageParams.Type {
+	case StorageTypeLocalMigrating:
+		// Do we have any restrictions at all actually?
+	case StorageTypeShared:
+		// TODO: We might already have the pool ID already, but for now we just do a new lookup
+		createdVDI, err := cs.xoaClient.GetVDIByUUID(ctx, vdiUUID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get created VDI: %v", err)
+		}
+		csiTopology = []*csi.Topology{
+			{
+				Segments: map[string]string{
+					"pool": createdVDI.Pool,
+				},
+			},
 		}
 	}
 
@@ -189,9 +208,10 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      volumeID,
-			CapacityBytes: capacity,
-			VolumeContext: storageParams.GenerateVolumeContext(),
+			VolumeId:           volumeID,
+			CapacityBytes:      capacity,
+			VolumeContext:      storageParams.GenerateVolumeContext(),
+			AccessibleTopology: csiTopology,
 		},
 	}, nil
 }
@@ -203,33 +223,6 @@ func (cs *ControllerService) getSRsWithTag(ctx context.Context, tag string) ([]x
 	}
 
 	return srs, nil
-}
-
-func filterSrsForHost(srs []xoa.SR, host string) []xoa.SR {
-	filteredSrs := make([]xoa.SR, 0)
-	for _, sr := range srs {
-		if sr.Host == host {
-			filteredSrs = append(filteredSrs, sr)
-		}
-	}
-	return filteredSrs
-}
-
-func pickBestSRForDisk(srs []xoa.SR, capacity int64) (*xoa.SR, error) {
-	// Then pick the SR with the most free space
-	bestSR := srs[0]
-	for _, sr := range srs {
-		if sr.Usage < bestSR.Usage {
-			bestSR = sr
-		}
-	}
-
-	// Check if the best SR has enough space for the disk
-	if bestSR.Usage+capacity > bestSR.Size {
-		return nil, fmt.Errorf("no SR has enough space for the disk: %s", bestSR.UUID)
-	}
-
-	return &bestSR, nil
 }
 
 func (cs *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
@@ -460,7 +453,7 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 		}
 
 		localSrs = filterSrsForHost(localSrs, vm.Host)
-		pickedSR, err := pickBestSRForDisk(localSrs, vdi.Size)
+		pickedSR, err := pickSrFromPool(localSrs, vdi.Size)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to pick SR for disk: %v", err)
 		}
