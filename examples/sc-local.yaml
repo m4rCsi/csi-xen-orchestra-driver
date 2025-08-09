@@ -1,0 +1,11 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: xoa-local
+provisioner: csi.xen-orchestra.marcsi.ch
+parameters:
+  csi.storage.k8s.io/fstype: ext4
+  type: local
+  srsWithTag: k8s-localmigrating
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true

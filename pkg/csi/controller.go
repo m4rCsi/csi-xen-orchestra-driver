@@ -181,6 +181,24 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 	switch storageParams.Type {
 	case StorageTypeLocalMigrating:
 		// Do we have any restrictions at all actually?
+	case StorageTypeLocal:
+		// TODO: We should already have all of this info, refactor to not need to do the lookup (again)
+		createdVDI, err := cs.xoaClient.GetVDIByUUID(ctx, vdiUUID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get created VDI: %v", err)
+		}
+		sr, err := cs.xoaClient.GetSRByUUID(ctx, createdVDI.SR)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get SR: %v", err)
+		}
+		csiTopology = []*csi.Topology{
+			{
+				Segments: map[string]string{
+					"pool": sr.Pool,
+					"host": sr.Host,
+				},
+			},
+		}
 	case StorageTypeShared:
 		// TODO: We might already have the pool ID already, but for now we just do a new lookup
 		createdVDI, err := cs.xoaClient.GetVDIByUUID(ctx, vdiUUID)
@@ -438,7 +456,8 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 		}
 	case StorageTypeShared:
 		// Nothing to do here, we can use the VDI directly
-	case StorageTypeLocalMigrating:
+
+	case StorageTypeLocalMigrating, StorageTypeLocal:
 		// Figure out which SR to use for the host
 		srSelectionType, srSelectionValue, err := storageParams.getSRSelection()
 		if err != nil {
@@ -463,6 +482,11 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 		if vdi.SR == pickedSR.UUID {
 			klog.Infof("VDI %s is already on SR %s", vdi.UUID, pickedSR.UUID)
 		} else {
+			if storageParams.Type == StorageTypeLocal {
+				// We should already be on the right SR.
+				// Since we are not, we give an error.
+				return nil, status.Errorf(codes.FailedPrecondition, "VDI is not on the right SR for the host %s", vm.Host)
+			}
 			migration := NewMigration(pickedSR.UUID)
 			err := cs.xoaClient.EditVDI(ctx, vdi.UUID, nil, ptr.To(migration.ToVDIDescription()))
 			if err != nil {

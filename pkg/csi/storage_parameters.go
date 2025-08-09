@@ -25,6 +25,7 @@ type StorageRepositorySelection string
 const (
 	StorageTypeShared         StorageType = "shared"
 	StorageTypeLocalMigrating StorageType = "localmigrating"
+	StorageTypeLocal          StorageType = "local"
 	StorageTypeStatic         StorageType = "static"
 
 	StorageRepositorySelectionTag  StorageRepositorySelection = "tag"
@@ -45,7 +46,7 @@ func LoadStorageParametersFromVolumeContext(volumeContext map[string]string) (*s
 	}
 	storageParams.Type = storageType
 	switch storageType {
-	case StorageTypeLocalMigrating:
+	case StorageTypeLocalMigrating, StorageTypeLocal:
 		storageParams.SRsWithTag = volumeContext["srsWithTag"]
 		if storageParams.SRsWithTag == "" {
 			return nil, status.Errorf(codes.InvalidArgument, "srsWithTag is required")
@@ -69,7 +70,7 @@ func (s *storageParmaters) GenerateVolumeContext() map[string]string {
 	}
 
 	switch s.Type {
-	case StorageTypeLocalMigrating:
+	case StorageTypeLocalMigrating, StorageTypeLocal:
 		d["srsWithTag"] = s.SRsWithTag
 	case StorageTypeShared:
 		d["srUUID"] = s.SRUUID
@@ -84,7 +85,7 @@ func LoadStorageParameters(parameters map[string]string) (*storageParmaters, err
 	storageType := StorageType(parameters["type"])
 	storageParams.Type = storageType
 	switch storageType {
-	case StorageTypeLocalMigrating:
+	case StorageTypeLocalMigrating, StorageTypeLocal:
 		srsWithTag := parameters["srsWithTag"]
 
 		if srsWithTag == "" {
@@ -110,7 +111,7 @@ func LoadStorageParameters(parameters map[string]string) (*storageParmaters, err
 
 func (s *storageParmaters) getSRSelection() (StorageRepositorySelection, string, error) {
 	switch s.Type {
-	case StorageTypeLocalMigrating:
+	case StorageTypeLocalMigrating, StorageTypeLocal:
 		return StorageRepositorySelectionTag, s.SRsWithTag, nil
 	case StorageTypeShared:
 		return StorageRepositorySelectionUUID, s.SRUUID, nil
@@ -121,7 +122,7 @@ func (s *storageParmaters) getSRSelection() (StorageRepositorySelection, string,
 
 func (s *storageParmaters) VolumeIDType() VolumeIDType {
 	switch s.Type {
-	case StorageTypeLocalMigrating:
+	case StorageTypeLocalMigrating, StorageTypeLocal:
 		// Because the UUID changes when we migrate the volume to the other SRs
 		// we use the name as the volume ID (which stays the same)
 		// However, this is less robust than using the UUID, because the name is not unique
