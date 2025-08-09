@@ -15,5 +15,5 @@ spec:
   volumes:
   - name: xen-volume
     persistentVolumeClaim:
-      claimName: test-xen-volume
+      claimName: test-static-pvc
   restartPolicy: Never
