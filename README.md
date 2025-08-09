@@ -34,18 +34,7 @@ Configuration:
 Operational notes:
 - [Disk creation leakage and mitigations](docs/disk-creation-leakage.md)
 
+Development:
+- [Development](DEVELOPMENT.md)
 
-## Installation & Configuration
 
-### Deployment
-
-tbA Proper Deployment. This is how we do it during development
-
-```bash
-make deploy
-```
-
-## Development References
-- https://kubernetes-csi.github.io/
-- https://github.com/container-storage-interface/spec/blob/master/spec.md
-- https://arslan.io/2018/06/21/how-to-write-a-container-storage-interface-csi-plugin/
