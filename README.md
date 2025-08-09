@@ -1,40 +1,51 @@
 # csi-xen-orchestra-driver
-CSI Driver for xen-ng managed via Xen Orchestra
 
-Under active Development. Not ready to be used in anger!
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
+CSI Driver for Xen-orchestra-managed Xen-ng environments
+
+> ⚠️ Under active development. Not production-ready yet.
+
+![Attached Disks](docs/assets/xoa-attached-disks.png)
 
 ## Requirements
-- Kubernetes (TODO: Figure out min version)
-  - Minimum based on on csi components: 1.20
-  - Minimum based on deployment resources
-  - Tested with 1.30
-- Xen Orchestra (TODO: Figure out min version)
-- xe-guest-utils running on nodes
+- Xen Orchestra (XO)
+- Kubernetes Cluster
+- Kubernetes Nodes: 
+  - `xe-guest-utils` installed
 
+## Compatibility
+
+Expecting much broader compatibility, but for now only tested on 1.30 (with Talos).
+
+| Driver | Kubernetes |
+| --- | --- |
+| dev (main) | 1.30 (tested) |
 
 ## Features
-- Dynamic Provisioning (creating disk on demand through PVC)
-- Static Provisioning (by referencing UUID of Disk)
-- Offline Volume Expansion (i.e. when not in use)
+- Dynamic provisioning (create disks on demand via PVCs)
+- Migration of local disks between hypvervisors (see: [Type: Local-Migrating](docs/type-localmigrating.md))
+- Static provisioning (use an existing VDI by UUID)
+- Offline volume expansion
 
 ## Documentation
 
-Start here:
+Start here
 - [Getting started](docs/getting-started.md)
 
-How to use the driver:
+How to use the driver
 - [Type: Shared](docs/type-shared.md)
 - [Type: Local-Migrating](docs/type-localmigrating.md)
 - [Static volumes (pre-existing VDI)](docs/static.md)
 
-Configuration:
+Configuration
 - [StorageClass parameters](docs/storage-class.md)
-- [Driver configuration (flags, auth)](docs/driver-configuration.md)
+- [Driver configuration (flags, authentication)](docs/driver-configuration.md)
 
-Operational notes:
+Operational notes
 - [Disk creation leakage and mitigations](docs/disk-creation-leakage.md)
 
-Development:
+Development
 - [Development](DEVELOPMENT.md)
 
 
