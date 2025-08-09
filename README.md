@@ -1,6 +1,7 @@
 # csi-xen-orchestra-driver
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![CI](https://github.com/m4rcsi/csi-xen-orchestra-driver/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/m4rcsi/csi-xen-orchestra-driver/actions/workflows/ci.yml)
 
 CSI Driver for Xen-orchestra-managed Xen-ng environments
 
