@@ -64,24 +64,23 @@ func (cs *ControllerService) cleanupAllDisks(ctx context.Context, name string) e
 func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	klog.V(2).InfoS("CreateVolume: called with args", "req", req)
 
-	cs.creationLock.CreationLock()
-	defer cs.creationLock.CreationUnlock()
-
 	volumeName := req.GetName()
 
 	if volumeName == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "disk name is required")
 	}
-	diskName := cs.diskNameGenerator.FromVolumeName(volumeName)
-	temporaryDiskName := cs.diskNameGenerator.TemporaryFromVolumeName(volumeName)
 
 	if req.VolumeContentSource != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "volume content source is not supported")
 	}
 
 	storageParams, err := LoadStorageParameters(req.GetParameters())
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to load storage parameters: %v", err)
+	if errors.Is(err, ErrInvalidStorageParameters) {
+		// TODO: find out what the right way to deal with this is.
+		// Should this be an error (i.e. if the parameters are invalid, or should we degrade gracefully?)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid storage parameters: %v", err)
+	} else if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to load storage parameters: %v", err)
 	}
 
 	capabilities := req.GetVolumeCapabilities()
@@ -101,8 +100,17 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 		capacity = 1024 * 1024 * 1024 // 1GB
 	}
 
-	var vdiUUID string
-	vdi, err := cs.xoaClient.GetVDIByName(ctx, diskName)
+	storageSelection := storageSelectionFromParameters(storageParams)
+	err = storageSelection.findSRs(ctx, cs.xoaClient)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to find SRs: %v", err)
+	}
+
+	var vdi *xoa.VDI // the vdi object
+
+	// Check first, if the disk with the right name already exists
+	diskName := cs.diskNameGenerator.FromVolumeName(volumeName)
+	foundVdi, err := cs.xoaClient.GetVDIByName(ctx, diskName)
 	if errors.Is(err, xoa.ErrObjectNotFound) {
 		// volume does not exist
 		// continue with creation
@@ -112,100 +120,41 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 		return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
 	} else {
 		// volume exists, check if size matches
-		if vdi.Size != capacity {
+		if foundVdi.Size != capacity {
 			return nil, status.Errorf(codes.AlreadyExists, "volume already exists but size mismatch")
 		}
-		vdiUUID = vdi.UUID
+
+		vdi = foundVdi
 	}
 
-	if vdiUUID == "" {
-		// Create: Volume does not exist, we need to create it
-
-		// We create a disk with a temporary name as a first step.
-		// A disk creation can take a long time and we might reach the timeout.
-		// If this is the case, a new creation disk will be started, and we don't have a good way to know if there is one already underway.
-		// With this prefix, we will be able to see if there are any temporary disks and remove them.
-		// TODO: Implement a cleanup mechanism to remove temporary disks.
-
-		foundTemporaryVDI, err := cs.xoaClient.GetVDIByName(ctx, temporaryDiskName)
-		if errors.Is(err, xoa.ErrObjectNotFound) {
-			// volume does not exist
-			// continue with creation
-		} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
-			// TODO, just pick up the first one and continue
-			err = cs.cleanupAllDisks(ctx, temporaryDiskName)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "multiple disks found with same name, but failed to cleanup temporary disks: %v", err)
-			}
-			return nil, status.Errorf(codes.Unavailable, "multiple disks found with same name, but failed to cleanup temporary disks")
-		} else if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
-		}
-
-		var pickedSRUUID string = ""
-		srSelectionType, srSelectionValue, err := storageParams.getSRSelection()
-		switch srSelectionType {
-		case StorageRepositorySelectionTag:
-			localSrs, err := cs.getSRsWithTag(ctx, srSelectionValue)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to get local SRs: %v", err)
-			}
-			if len(localSrs) == 0 {
-				return nil, status.Errorf(codes.Internal, "no local SRs found with tag: %s", srSelectionValue)
-			}
-			bestSR, err := pickSRForLocal(localSrs, capacity, req.AccessibilityRequirements)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to pick SR for disk: %v", err)
-			}
-			pickedSRUUID = bestSR.UUID
-		case StorageRepositorySelectionUUID:
-			pickedSRUUID = srSelectionValue
-		}
+	if vdi == nil {
+		createdVDI, err := cs.createDisk(ctx, storageSelection, volumeName, capacity, req.AccessibilityRequirements)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get selected SR UUIDs: %v", err)
+			return nil, status.Errorf(codes.Internal, "failed to create disk: %v", err)
 		}
-
-		if foundTemporaryVDI == nil {
-			vdicreatedUUID, err := cs.xoaClient.CreateVDI(ctx, temporaryDiskName, pickedSRUUID, capacity)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to create disk: %v", err)
-			}
-			vdiUUID = vdicreatedUUID
-			klog.Infof("Successfully created disk '%s' with UUID: %s", temporaryDiskName, vdiUUID)
-		} else {
-			vdiUUID = foundTemporaryVDI.UUID
-		}
-
-		err = cs.xoaClient.EditVDI(ctx, vdiUUID, ptr.To(diskName), ptr.To(""))
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to edit disk: %v", err)
-		}
+		vdi = createdVDI
 	}
 
-	// TODO: We should already have all of this info, refactor to not need to do the lookup (again)
-	createdVDI, err := cs.xoaClient.GetVDIByUUID(ctx, vdiUUID)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get created VDI: %v", err)
-	}
-
-	storageInfo := storageParams.ToStorageInfo()
-
-	err = cs.xoaClient.EditVDI(ctx, vdiUUID, nil, ptr.To(storageInfo.ToVDIDescription()))
+	// Ensure the VDI has the right storage info stored in the description
+	storageInfo := storageSelection.toStorageInfo()
+	err = cs.xoaClient.EditVDI(ctx, vdi.UUID, nil, ptr.To(storageInfo.ToVDIDescription()))
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to edit disk: %v", err)
 	}
 
-	csiTopology, err := cs.getTopologyFromVDI(ctx, storageInfo, createdVDI)
+	// Find out the topology for the VDI
+	csiTopology, err := storageSelection.getTopologyForVDI(vdi)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get topology: %v", err)
 	}
 
+	// Which reference we use for this type of volume
 	var volumeID string
-	switch storageParams.VolumeIDType() {
+	switch storageSelection.VolumeIDType() {
 	case NameAsVolumeID:
 		volumeID = CreateVolumeIDWithName(volumeName)
 	case UUIDAsVolumeID:
-		volumeID = CreateVolumeIDWithUUID(vdiUUID)
+		volumeID = CreateVolumeIDWithUUID(vdi.UUID)
 	default:
 		return nil, status.Errorf(codes.Internal, "invalid volume ID type")
 	}
@@ -217,47 +166,6 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 			AccessibleTopology: csiTopology,
 		},
 	}, nil
-}
-
-func (cs *ControllerService) getTopologyFromVDI(ctx context.Context, storageInfo *StorageInfo, vdi *xoa.VDI) ([]*csi.Topology, error) {
-	switch storageInfo.Type {
-	case StorageTypeLocal:
-		if storageInfo.Migrating == nil {
-			sr, err := cs.xoaClient.GetSRByUUID(ctx, vdi.SR)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to get SR: %v", err)
-			}
-			return []*csi.Topology{
-				{
-					Segments: map[string]string{
-						"pool": sr.Pool,
-						"host": sr.Host,
-					},
-				},
-			}, nil
-		} else {
-			return []*csi.Topology{
-				{
-					Segments: map[string]string{
-						"pool": vdi.Pool,
-					},
-				},
-			}, nil
-		}
-	case StorageTypeShared:
-		return nil, nil
-	default:
-		return nil, nil
-	}
-}
-
-func (cs *ControllerService) getSRsWithTag(ctx context.Context, tag string) ([]xoa.SR, error) {
-	srs, err := cs.xoaClient.GetSRsWithTag(ctx, tag)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get SRs with tag: %v", err)
-	}
-
-	return srs, nil
 }
 
 func (cs *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
@@ -325,7 +233,7 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume capability")
 	}
 
-	vidType, volumeIDValue, err := ParseVolumeID(req.GetVolumeId())
+	vdi, storageInfo, err := cs.findDisk(ctx, req.GetVolumeId())
 	if err != nil {
 		return nil, err
 	}
@@ -337,214 +245,42 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 		return nil, status.Errorf(codes.Internal, "failed to get VM: %v", err)
 	}
 
-	var vdi *xoa.VDI = nil
-	var storageInfo *StorageInfo = nil
-	switch vidType {
-	case NameAsVolumeID:
-		diskName := cs.diskNameGenerator.FromVolumeName(volumeIDValue)
-		foundVdi, err := cs.xoaClient.GetVDIByName(ctx, diskName)
-		if errors.Is(err, xoa.ErrObjectNotFound) {
-			return nil, status.Errorf(codes.NotFound, "VDI not found")
-		} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
-			// This may happen if the VDI is being migrated
-			return nil, status.Errorf(codes.Unavailable, "multiple VDIs found with same name (temporary error)")
-		} else if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get VDI: %v", err)
-		}
-
-		metadata, err := EmbeddedVDIMetadataFromDescription(foundVdi.NameDescription)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get migration data from VDI description: %v", err)
-		}
-		switch m := metadata.(type) {
-		case *StorageInfo:
-			if yes, targetSRUUID := m.HasOngoingMigration(); yes {
-				if targetSRUUID != foundVdi.SR {
-					// Migration is still in progress, so we can't use the VDI.
-					return nil, status.Errorf(codes.Unavailable, "VDI is being migrated to %s", targetSRUUID)
-				}
-
-				// At this point only one VDI exists, and it is already on the right SR. So we can remove the migration description.
-				m.Migrating.EndMigration()
-				err = cs.xoaClient.EditVDI(ctx, foundVdi.UUID, nil, ptr.To(m.ToVDIDescription()))
-				if err != nil {
-					return nil, status.Errorf(codes.Internal, "failed to set VDI description: %v", err)
-				}
-
-				klog.Infof("VDI %s finished migration to %s", foundVdi.UUID, targetSRUUID)
-				vdi = foundVdi
-			} else {
-				vdi = foundVdi
-			}
-			storageInfo = m
-		case *DeletionCandidate:
-			// This should not happen. There is a chance this happens when the cleanup process runs and attaches a deletion candidate on the temporary disk,
-			// but the CreateVolume call is called at the same time.
-			// We need to give up
-			return nil, status.Errorf(codes.Internal, "VDI is a deletion candidate, but should not be")
-		case *NoMetadata:
-			return nil, status.Errorf(codes.Internal, "VDI has no metadata, but should have")
-		default:
-			return nil, status.Errorf(codes.Internal, "unhandled VDI metadata type: %T", m)
-		}
-
-	case UUIDAsVolumeID:
-		vdiUUID := volumeIDValue
-		foundVdi, err := cs.xoaClient.GetVDIByUUID(ctx, vdiUUID)
-		if errors.Is(err, xoa.ErrObjectNotFound) {
-			return nil, status.Errorf(codes.NotFound, "VDI not found")
-		} else if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get VDI: %v", err)
-		}
-
-		metadata, err := EmbeddedVDIMetadataFromDescription(foundVdi.NameDescription)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get migration data from VDI description: %v", err)
-		}
-
-		switch m := metadata.(type) {
-		case *StorageInfo:
-			storageInfo = m
-		case *DeletionCandidate:
-			return nil, status.Errorf(codes.Internal, "VDI is a deletion candidate, but should not be")
-		case *NoMetadata:
-			return nil, status.Errorf(codes.Internal, "VDI has no metadata, but should have")
-		}
-
-		vdi = foundVdi
-	default:
-		return nil, status.Errorf(codes.InvalidArgument, "invalid volume ID type")
-	}
-
-	// Check if the VDI is already attached to the VM
-	vbds, err := cs.xoaClient.GetVBDsByVMAndVDI(ctx, vmUUID, vdi.UUID)
+	vbd, err := cs.checkDiskAttachment(ctx, vdi, vm)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get VBDs: %v", err)
+		return nil, err
 	}
-
-	var selectedVBD *xoa.VBD = nil
-	if len(vbds) > 0 {
-		for i, vbd := range vbds {
-			if vbd.Attached {
-				selectedVBD = &vbds[i]
-				break
-			}
-		}
-
-		if selectedVBD == nil {
-			selectedVBD = &vbds[0]
-		}
-	}
-
-	if selectedVBD != nil {
-		if selectedVBD.Attached && selectedVBD.Device != "" {
-			return &csi.ControllerPublishVolumeResponse{
-				PublishContext: map[string]string{
-					"device": selectedVBD.Device,
-					"vbd":    selectedVBD.UUID,
-				},
-			}, nil
-		}
-
-		klog.Infof("Connecting VBD %s", selectedVBD.UUID)
-		connectedVBD, err := cs.xoaClient.ConnectVBDAndWaitForDevice(ctx, selectedVBD.UUID)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to connect VBD: %v", err)
-		}
-
+	if vbd != nil {
+		// Already attached, return the publish context
 		return &csi.ControllerPublishVolumeResponse{
-			PublishContext: map[string]string{
-				"device": connectedVBD.Device,
-				"vbd":    connectedVBD.UUID,
-			},
+			PublishContext: publishContextFromVBD(vbd),
 		}, nil
+	}
+
+	storageSelection := storageSelectionFromStorageInfo(storageInfo, vdi)
+	err = storageSelection.findSRs(ctx, cs.xoaClient)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to find SRs: %v", err)
 	}
 
 	klog.Infof("VDI %s is not attached to VM %s", vdi.UUID, vmUUID)
 
-	switch storageInfo.Type {
-	case StorageTypeStatic:
-		sr, err := cs.xoaClient.GetSRByUUID(ctx, vdi.SR)
+	needsMigration, err := storageSelection.needsMigration(vm)
+	if errors.Is(err, ErrSRNotValidForHost) {
+		return nil, status.Errorf(codes.FailedPrecondition, "SR is not valid for host %s", vm.Host)
+	} else if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to check if migration is needed: %v", err)
+	}
+
+	if needsMigration {
+		migratedvdi, _, err := cs.migrateVDI(ctx, vdi, vm, storageSelection)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get SR: %v", err)
+			return nil, status.Errorf(codes.Internal, "failed to migrate VDI: %v", err)
 		}
-
-		// TODO: We need to implement topology
-		if sr.Shared {
-			// If we are shared, we need to check if the VM is in the same pool as the SR
-			if vm.Pool != sr.Pool {
-				return nil, status.Errorf(codes.FailedPrecondition, "VDI is not on the same pool as the VM")
-			}
-		} else {
-			// If we are not shared, we need to check if the VM is on the same host as the SR
-			if vm.Host != sr.Host {
-				return nil, status.Errorf(codes.FailedPrecondition, "VDI is not on the same host as the VM")
-			}
-		}
-	case StorageTypeShared:
-		// Nothing to do here, we can use the VDI directly
-
-	case StorageTypeLocal:
-		localSrs, err := cs.getSRsWithTag(ctx, *storageInfo.SRsWithTag)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get local SRs: %v", err)
-		}
-
-		localSrs = filterSrsForHost(localSrs, vm.Host)
-		pickedSR, err := pickSrFromPool(localSrs, vdi.Size)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to pick SR for disk: %v", err)
-		}
-
-		klog.Infof("SR found for host %s: %+v", vm.Host, pickedSR)
-
-		if vdi.SR == pickedSR.UUID {
-			klog.Infof("VDI %s is already on SR %s", vdi.UUID, pickedSR.UUID)
-		} else {
-			if ok, _ := storageInfo.IsMigrating(); !ok {
-				// We should already be on the right SR.
-				// Since we are not, we give an error.
-				return nil, status.Errorf(codes.FailedPrecondition, "VDI is not on the right SR for the host %s", vm.Host)
-			}
-			storageInfo.Migrating.StartMigration(pickedSR.UUID)
-			err := cs.xoaClient.EditVDI(ctx, vdi.UUID, nil, ptr.To(storageInfo.ToVDIDescription()))
-			if err != nil {
-				klog.Errorf("failed to set VDI description: %v", err)
-				return nil, status.Errorf(codes.Internal, "failed to set VDI description: %v", err)
-			}
-
-			klog.Infof("Migrating VDI %s to SR %s", vdi.UUID, pickedSR.UUID)
-			newVdiUUID, err := cs.xoaClient.MigrateVDI(ctx, vdi.UUID, pickedSR.UUID)
-			if err != nil {
-				klog.Errorf("failed to migrate VDI: %v", err)
-				return nil, status.Errorf(codes.Internal, "failed to migrate VDI: %v", err)
-			}
-			klog.Infof("VDI %s migrated to SR %s (new VDI UUID: %s)", vdi.UUID, pickedSR.UUID, newVdiUUID)
-
-			foundVdi, err := cs.xoaClient.GetVDIByUUID(ctx, newVdiUUID)
-			if errors.Is(err, xoa.ErrObjectNotFound) {
-				return nil, status.Errorf(codes.NotFound, "Migrated VDI not found")
-			} else if err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to get VDI: %v", err)
-			}
-
-			// Remove the migration description from the new VDI
-			storageInfo.Migrating.EndMigration()
-			err = cs.xoaClient.EditVDI(ctx, foundVdi.UUID, nil, ptr.To(storageInfo.ToVDIDescription()))
-			if err != nil {
-				klog.Errorf("failed to set VDI description: %v", err)
-				return nil, status.Errorf(codes.Internal, "failed to set VDI description: %v", err)
-			}
-
-			klog.Infof("VDI %s finished migration to %s", foundVdi.UUID, pickedSR.UUID)
-
-			// Replace the VDI with the new one
-			vdi = foundVdi
-		}
+		vdi = migratedvdi
 	}
 
 	// Attach the VDI to the VM in RW mode
-	vbd, err := cs.xoaClient.AttachVDIAndWaitForDevice(ctx, vmUUID, vdi.UUID, "RW")
+	vbd, err = cs.xoaClient.AttachVDIAndWaitForDevice(ctx, vm.UUID, vdi.UUID, "RW")
 	if err != nil {
 		if errors.Is(err, xoa.ErrNoSuchObject) {
 			return nil, status.Errorf(codes.NotFound, "not found")
@@ -759,7 +495,8 @@ func (cs *ControllerService) ControllerGetVolume(ctx context.Context, req *csi.C
 		return nil, status.Errorf(codes.Internal, "VDI has no metadata, but should have")
 	}
 
-	csiTopology, err := cs.getTopologyFromVDI(ctx, storageInfo, vdi)
+	storageSelection := storageSelectionFromStorageInfo(storageInfo, vdi)
+	csiTopology, err := storageSelection.getTopologyForVDI(vdi)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get topology: %v", err)
 	}
@@ -808,4 +545,222 @@ func (cs *ControllerService) ControllerGetCapabilities(ctx context.Context, req 
 			},
 		},
 	}, nil
+}
+
+// createDisk: createDisk based on volumeName, and with capacity and storageSelection
+func (cs *ControllerService) createDisk(ctx context.Context, storageSelection *storageSelection, volumeName string, capacity int64, topologyRequirement *csi.TopologyRequirement) (*xoa.VDI, error) {
+	cs.creationLock.CreationLock()
+	defer cs.creationLock.CreationUnlock()
+
+	// We create a disk with a temporary name as a first step.
+	// A disk creation can take a long time and we might reach the timeout.
+	// If this is the case, a new creation disk will be started, and we don't have a good way to know if there is one already underway.
+	// With this prefix, we will be able to see if there are any temporary disks and remove them.
+	// TODO: Implement a cleanup mechanism to remove temporary disks.
+	var vdiUUID string
+
+	diskName := cs.diskNameGenerator.FromVolumeName(volumeName)
+	temporaryDiskName := cs.diskNameGenerator.TemporaryFromVolumeName(volumeName)
+
+	foundTemporaryVDI, err := cs.xoaClient.GetVDIByName(ctx, temporaryDiskName)
+	if errors.Is(err, xoa.ErrObjectNotFound) {
+		// volume does not exist
+		// continue with creation
+	} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
+		// TODO, just pick up the first one and continue
+		err = cs.cleanupAllDisks(ctx, temporaryDiskName)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "multiple disks found with same name, but failed to cleanup temporary disks: %v", err)
+		}
+		return nil, status.Errorf(codes.Unavailable, "multiple disks found with same name, but failed to cleanup temporary disks")
+	} else if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
+	}
+
+	pickedSR, err := storageSelection.pickSRForTopology(capacity, topologyRequirement)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to pick SR for disk: %v", err)
+	}
+
+	if foundTemporaryVDI == nil {
+		vdicreatedUUID, err := cs.xoaClient.CreateVDI(ctx, temporaryDiskName, pickedSR.UUID, capacity)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to create disk: %v", err)
+		}
+		vdiUUID = vdicreatedUUID
+		klog.Infof("Successfully created disk '%s' with UUID: %s", temporaryDiskName, vdiUUID)
+	} else {
+		vdiUUID = foundTemporaryVDI.UUID
+	}
+
+	err = cs.xoaClient.EditVDI(ctx, vdiUUID, ptr.To(diskName), ptr.To(""))
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to edit disk: %v", err)
+	}
+
+	// TODO: Refactor, we should not need to look it up again.
+	createdVDI, err := cs.xoaClient.GetVDIByUUID(ctx, vdiUUID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get created VDI: %v", err)
+	}
+	return createdVDI, nil
+}
+
+func (cs *ControllerService) findDisk(ctx context.Context, volumeID string) (*xoa.VDI, *StorageInfo, error) {
+	vidType, volumeIDValue, err := ParseVolumeID(volumeID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var vdi *xoa.VDI = nil
+	// var storageInfo *StorageInfo = nil
+	switch vidType {
+	case NameAsVolumeID:
+		diskName := cs.diskNameGenerator.FromVolumeName(volumeIDValue)
+		foundVdi, err := cs.xoaClient.GetVDIByName(ctx, diskName)
+		if errors.Is(err, xoa.ErrObjectNotFound) {
+			return nil, nil, status.Errorf(codes.NotFound, "VDI not found")
+		} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
+			// This may happen if the VDI is being migrated
+			return nil, nil, status.Errorf(codes.Unavailable, "multiple VDIs found with same name (temporary error)")
+		} else if err != nil {
+			return nil, nil, status.Errorf(codes.Internal, "failed to get VDI: %v", err)
+		}
+		vdi = foundVdi
+
+	case UUIDAsVolumeID:
+		vdiUUID := volumeIDValue
+		foundVdi, err := cs.xoaClient.GetVDIByUUID(ctx, vdiUUID)
+		if errors.Is(err, xoa.ErrObjectNotFound) {
+			return nil, nil, status.Errorf(codes.NotFound, "VDI not found")
+		} else if err != nil {
+			return nil, nil, status.Errorf(codes.Internal, "failed to get VDI: %v", err)
+		}
+		vdi = foundVdi
+	default:
+		return nil, nil, status.Errorf(codes.InvalidArgument, "invalid volume ID type")
+	}
+
+	metadata, err := EmbeddedVDIMetadataFromDescription(vdi.NameDescription)
+	if err != nil {
+		return nil, nil, status.Errorf(codes.Internal, "failed to get migration data from VDI description: %v", err)
+	}
+
+	var storageInfo *StorageInfo = nil
+	switch m := metadata.(type) {
+	case *StorageInfo:
+		if yes, targetSRUUID := m.HasOngoingMigration(); yes {
+			if targetSRUUID != vdi.SR {
+				// Migration is still in progress, so we can't use the VDI.
+				return nil, nil, status.Errorf(codes.Unavailable, "VDI is being migrated to %s", targetSRUUID)
+			}
+
+			// At this point only one VDI exists, and it is already on the right SR. So we can remove the migration description
+			// and continue
+			m.Migrating.EndMigration()
+			err = cs.xoaClient.EditVDI(ctx, vdi.UUID, nil, ptr.To(m.ToVDIDescription()))
+			if err != nil {
+				return nil, nil, status.Errorf(codes.Internal, "failed to set VDI description: %v", err)
+			}
+			klog.Infof("VDI %s finished migration to %s", vdi.UUID, targetSRUUID)
+		}
+		storageInfo = m
+	case *DeletionCandidate:
+		// This should not happen. There is a chance this happens when the cleanup process runs and attaches a deletion candidate on the temporary disk,
+		// but the CreateVolume call is called at the same time.
+		// We need to give up
+		return nil, nil, status.Errorf(codes.Internal, "VDI is a deletion candidate, but should not be")
+	case *NoMetadata:
+		return nil, nil, status.Errorf(codes.Internal, "VDI has no metadata, but should have")
+	default:
+		return nil, nil, status.Errorf(codes.Internal, "unhandled VDI metadata type: %T", m)
+	}
+
+	return vdi, storageInfo, nil
+}
+
+func publishContextFromVBD(vbd *xoa.VBD) map[string]string {
+	return map[string]string{
+		"device": vbd.Device,
+		"vbd":    vbd.UUID,
+	}
+}
+
+func (cs *ControllerService) checkDiskAttachment(ctx context.Context, vdi *xoa.VDI, vm *xoa.VM) (*xoa.VBD, error) {
+	// Check if the VDI is already attached to the VM
+	vbds, err := cs.xoaClient.GetVBDsByVMAndVDI(ctx, vm.UUID, vdi.UUID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get VBDs: %v", err)
+	}
+
+	var selectedVBD *xoa.VBD = nil
+	if len(vbds) > 0 {
+		for i, vbd := range vbds {
+			if vbd.Attached {
+				selectedVBD = &vbds[i]
+				break
+			}
+		}
+
+		if selectedVBD == nil {
+			selectedVBD = &vbds[0]
+		}
+	}
+
+	if selectedVBD != nil {
+		if selectedVBD.Attached && selectedVBD.Device != "" {
+			return selectedVBD, nil
+		}
+
+		klog.Infof("Connecting VBD %s", selectedVBD.UUID)
+		connectedVBD, err := cs.xoaClient.ConnectVBDAndWaitForDevice(ctx, selectedVBD.UUID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to connect VBD: %v", err)
+		}
+
+		return connectedVBD, nil
+	}
+
+	return nil, nil
+}
+
+func (cs *ControllerService) migrateVDI(ctx context.Context, vdi *xoa.VDI, vm *xoa.VM, storageSelection *storageSelection) (*xoa.VDI, *xoa.SR, error) {
+	pickedSR, err := storageSelection.pickSRForHost(vm.Host, vdi.Size)
+	if err != nil {
+		return nil, nil, status.Errorf(codes.Internal, "failed to pick SR: %v", err)
+	}
+
+	storageInfo := storageSelection.toStorageInfo()
+	storageInfo.Migrating.StartMigration(pickedSR.UUID)
+	err = cs.xoaClient.EditVDI(ctx, vdi.UUID, nil, ptr.To(storageInfo.ToVDIDescription()))
+	if err != nil {
+		klog.Errorf("failed to set VDI description: %v", err)
+		return nil, nil, status.Errorf(codes.Internal, "failed to set VDI description: %v", err)
+	}
+
+	klog.Infof("Migrating VDI %s to SR %s", vdi.UUID, pickedSR.UUID)
+	newVdiUUID, err := cs.xoaClient.MigrateVDI(ctx, vdi.UUID, pickedSR.UUID)
+	if err != nil {
+		klog.Errorf("failed to migrate VDI: %v", err)
+		return nil, nil, status.Errorf(codes.Internal, "failed to migrate VDI: %v", err)
+	}
+	klog.Infof("VDI %s migrated to SR %s (new VDI UUID: %s)", vdi.UUID, pickedSR.UUID, newVdiUUID)
+
+	foundVdi, err := cs.xoaClient.GetVDIByUUID(ctx, newVdiUUID)
+	if errors.Is(err, xoa.ErrObjectNotFound) {
+		return nil, nil, status.Errorf(codes.NotFound, "Migrated VDI not found")
+	} else if err != nil {
+		return nil, nil, status.Errorf(codes.Internal, "failed to get VDI: %v", err)
+	}
+
+	// Remove the migration description from the new VDI
+	storageInfo.Migrating.EndMigration()
+	err = cs.xoaClient.EditVDI(ctx, foundVdi.UUID, nil, ptr.To(storageInfo.ToVDIDescription()))
+	if err != nil {
+		klog.Errorf("failed to set VDI description: %v", err)
+		return nil, nil, status.Errorf(codes.Internal, "failed to set VDI description: %v", err)
+	}
+
+	klog.Infof("VDI %s finished migration to %s", foundVdi.UUID, pickedSR.UUID)
+	return foundVdi, pickedSR, nil
 }

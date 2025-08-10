@@ -57,7 +57,7 @@ func TestPickSRForLocal(t *testing.T) {
 		},
 	}
 
-	sr, err := pickSRForLocal(srs, capacity, accessibilityRequirements)
+	sr, err := pickSR(srs, capacity, accessibilityRequirements, SRFilterScopeHost)
 	if err != nil {
 		t.Fatalf("failed to pick SR: %v", err)
 	}

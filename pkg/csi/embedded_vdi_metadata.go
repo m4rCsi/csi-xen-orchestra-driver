@@ -32,9 +32,8 @@ type EmbeddedVDIMetadata interface {
 }
 
 type StorageInfo struct {
-	Type       StorageType `json:"type"` // TODO: Should not be needed!
-	Migrating  *Migrating  `json:"migrating,omitempty"`
-	SRsWithTag *string     `json:"srsWithTag,omitempty"`
+	Migrating  *Migrating `json:"migrating,omitempty"`
+	SRsWithTag *string    `json:"srsWithTag,omitempty"`
 }
 
 type Migrating struct {
@@ -119,11 +118,6 @@ func (d *DeletionCandidate) ToVDIDescription() string {
 	return CSIStorageDeletionCandidatePrefix + string(json)
 }
 
-// Helper methods
-// func (m *Migration) TargetSRUUID() string {
-// 	return m.ToSRUUID
-// }
-
 func (d *DeletionCandidate) GetUnusedSince() time.Time {
 	return d.UnusedSince
 }
@@ -155,14 +149,3 @@ func (s *Migrating) StartMigration(srUUID string) {
 func (s *Migrating) EndMigration() {
 	s.OngoingMigrationToSRUUID = nil
 }
-
-// func (s *StorageInfo) getSRSelection() (StorageRepositorySelection, string, error) {
-// 	switch s.Type {
-// 	case StorageTypeLocal:
-// 		return StorageRepositorySelectionTag, s.Migrating.SRsWithTag, nil
-// 	case StorageTypeShared:
-// 		return StorageRepositorySelectionUUID, s.SRUUID, nil
-// 	default:
-// 		return "", "", status.Errorf(codes.InvalidArgument, "invalid storage type: %s", s.Type)
-// 	}
-// }
