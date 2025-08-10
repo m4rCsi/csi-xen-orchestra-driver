@@ -68,7 +68,7 @@ func filterSrsByTopology(srs []xoa.SR, topologies []*csi.Topology) []xoa.SR {
 	return filteredSrs
 }
 
-func pickSRForLocalMigrating(srs []xoa.SR, capacity int64, accessibilityRequirements *csi.TopologyRequirement) (*xoa.SR, error) {
+func pickSRForLocal(srs []xoa.SR, capacity int64, accessibilityRequirements *csi.TopologyRequirement) (*xoa.SR, error) {
 	// If we have preferred topo, let's first try to find a SR that matches it
 	var filteredPreferredSrs []xoa.SR
 	if accessibilityRequirements != nil {

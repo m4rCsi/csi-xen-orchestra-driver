@@ -76,6 +76,7 @@ type Driver struct {
 	tempCleanup *TempCleanup
 
 	diskNameGenerator *DiskNameGenerator
+	creationLock      *CreationLock
 }
 
 func NewDriver(opts *DriverOptions, xoaClient xoa.Client, nodeMetadata NodeMetadataGetter, mounter Mounter) *Driver {
@@ -137,16 +138,18 @@ func (d *Driver) Run() error {
 	}
 
 	if d.options.Mode == AllMode || d.options.Mode == ControllerMode {
+		d.creationLock = NewCreationLock()
+
 		if d.xoaClient == nil {
 			return fmt.Errorf("xoaClient is required for controller mode")
 		}
 		klog.InfoS("Starting controller service")
-		d.controller = NewControllerService(d, d.xoaClient, d.diskNameGenerator)
+		d.controller = NewControllerService(d, d.xoaClient, d.diskNameGenerator, d.creationLock)
 		csi.RegisterControllerServer(d.server, d.controller)
 
 		if d.options.TempCleanup {
 			klog.InfoS("Starting temp cleanup service")
-			d.tempCleanup = NewTempCleanup(d.xoaClient, d.diskNameGenerator)
+			d.tempCleanup = NewTempCleanup(d.xoaClient, d.diskNameGenerator, d.creationLock)
 			go d.tempCleanup.Run()
 		}
 	}

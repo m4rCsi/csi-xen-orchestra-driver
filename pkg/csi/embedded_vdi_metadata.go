@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	MigrationPrefix         = "csi:migration: "
-	DeletionCandidatePrefix = "csi:deletion-candidate: "
+	CSIStorageInfoPrefix              = "csi:info: "
+	CSIStorageDeletionCandidatePrefix = "csi:deletion-candidate: "
 )
 
 // EmbeddedVDIMetadata represents the different types of metadata that can be embedded in VDI descriptions
@@ -31,8 +31,14 @@ type EmbeddedVDIMetadata interface {
 	ToVDIDescription() string
 }
 
-type Migration struct {
-	ToSRUUID string `json:"toSRUUID"`
+type StorageInfo struct {
+	Type       StorageType `json:"type"` // TODO: Should not be needed!
+	Migrating  *Migrating  `json:"migrating,omitempty"`
+	SRsWithTag *string     `json:"srsWithTag,omitempty"`
+}
+
+type Migrating struct {
+	OngoingMigrationToSRUUID *string `json:"toSRUUID,omitempty"`
 }
 
 type DeletionCandidate struct {
@@ -46,9 +52,9 @@ func (n *NoMetadata) ToVDIDescription() string {
 }
 
 // Constructor functions
-func NewMigration(toSRUUID string) *Migration {
-	return &Migration{
-		ToSRUUID: toSRUUID,
+func NewStorageInfoWithMigrating(srsWithTag string) *StorageInfo {
+	return &StorageInfo{
+		Migrating: &Migrating{},
 	}
 }
 
@@ -62,27 +68,34 @@ func NewDeletionCandidate(unusedSince time.Time) *DeletionCandidate {
 // Returns nil if no recognized type is found
 func EmbeddedVDIMetadataFromDescription(description string) (EmbeddedVDIMetadata, error) {
 	switch {
-	case strings.HasPrefix(description, MigrationPrefix):
-		return parseMigration(description)
-	case strings.HasPrefix(description, DeletionCandidatePrefix):
+	case strings.HasPrefix(description, CSIStorageInfoPrefix):
+		return parseStorageInfo(description)
+	case strings.HasPrefix(description, CSIStorageDeletionCandidatePrefix):
 		return parseDeletionCandidate(description)
 	default:
 		return &NoMetadata{}, nil
 	}
 }
 
-func parseMigration(description string) (*Migration, error) {
-	var migration Migration
-	err := json.Unmarshal([]byte(description[len(MigrationPrefix):]), &migration)
+func parseStorageInfo(description string) (*StorageInfo, error) {
+	var storageInfo StorageInfo
+	err := json.Unmarshal([]byte(description[len(CSIStorageInfoPrefix):]), &storageInfo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse migration: %w", err)
+		return nil, fmt.Errorf("failed to parse storage info: %w", err)
 	}
-	return &migration, nil
+
+	if storageInfo.Migrating != nil {
+		if storageInfo.SRsWithTag == nil {
+			return nil, fmt.Errorf("migrating storage info has no SRs with tag")
+		}
+	}
+
+	return &storageInfo, nil
 }
 
 func parseDeletionCandidate(description string) (*DeletionCandidate, error) {
 	var deletionCandidate DeletionCandidate
-	err := json.Unmarshal([]byte(description[len(DeletionCandidatePrefix):]), &deletionCandidate)
+	err := json.Unmarshal([]byte(description[len(CSIStorageDeletionCandidatePrefix):]), &deletionCandidate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse deletion candidate: %w", err)
 	}
@@ -90,12 +103,12 @@ func parseDeletionCandidate(description string) (*DeletionCandidate, error) {
 }
 
 // ToVDIDescription implementations
-func (m *Migration) ToVDIDescription() string {
-	json, err := json.Marshal(m)
+func (s *StorageInfo) ToVDIDescription() string {
+	json, err := json.Marshal(s)
 	if err != nil {
 		return ""
 	}
-	return MigrationPrefix + string(json)
+	return CSIStorageInfoPrefix + string(json)
 }
 
 func (d *DeletionCandidate) ToVDIDescription() string {
@@ -103,14 +116,53 @@ func (d *DeletionCandidate) ToVDIDescription() string {
 	if err != nil {
 		return ""
 	}
-	return DeletionCandidatePrefix + string(json)
+	return CSIStorageDeletionCandidatePrefix + string(json)
 }
 
 // Helper methods
-func (m *Migration) TargetSRUUID() string {
-	return m.ToSRUUID
-}
+// func (m *Migration) TargetSRUUID() string {
+// 	return m.ToSRUUID
+// }
 
 func (d *DeletionCandidate) GetUnusedSince() time.Time {
 	return d.UnusedSince
 }
+
+func (s *StorageInfo) HasOngoingMigration() (bool, string) {
+	if s.Migrating == nil {
+		return false, ""
+	}
+
+	if s.Migrating.OngoingMigrationToSRUUID == nil {
+		return false, ""
+	}
+
+	return true, *s.Migrating.OngoingMigrationToSRUUID
+}
+
+func (s *StorageInfo) IsMigrating() (bool, *Migrating) {
+	if s.Migrating == nil {
+		return false, nil
+	}
+
+	return true, s.Migrating
+}
+
+func (s *Migrating) StartMigration(srUUID string) {
+	s.OngoingMigrationToSRUUID = &srUUID
+}
+
+func (s *Migrating) EndMigration() {
+	s.OngoingMigrationToSRUUID = nil
+}
+
+// func (s *StorageInfo) getSRSelection() (StorageRepositorySelection, string, error) {
+// 	switch s.Type {
+// 	case StorageTypeLocal:
+// 		return StorageRepositorySelectionTag, s.Migrating.SRsWithTag, nil
+// 	case StorageTypeShared:
+// 		return StorageRepositorySelectionUUID, s.SRUUID, nil
+// 	default:
+// 		return "", "", status.Errorf(codes.InvalidArgument, "invalid storage type: %s", s.Type)
+// 	}
+// }

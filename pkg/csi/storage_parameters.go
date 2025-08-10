@@ -23,10 +23,10 @@ type StorageType string
 type StorageRepositorySelection string
 
 const (
-	StorageTypeShared         StorageType = "shared"
-	StorageTypeLocalMigrating StorageType = "localmigrating"
-	StorageTypeLocal          StorageType = "local"
-	StorageTypeStatic         StorageType = "static"
+	StorageTypeShared StorageType = "shared"
+	// StorageTypeLocalMigrating StorageType = "localmigrating"
+	StorageTypeLocal  StorageType = "local"
+	StorageTypeStatic StorageType = "static"
 
 	StorageRepositorySelectionTag  StorageRepositorySelection = "tag"
 	StorageRepositorySelectionUUID StorageRepositorySelection = "uuid"
@@ -36,47 +36,7 @@ type storageParmaters struct {
 	Type       StorageType
 	SRUUID     string
 	SRsWithTag string
-}
-
-func LoadStorageParametersFromVolumeContext(volumeContext map[string]string) (*storageParmaters, error) {
-	storageParams := &storageParmaters{}
-	storageType := StorageType(volumeContext["type"])
-	if storageType == "" {
-		storageType = StorageTypeStatic
-	}
-	storageParams.Type = storageType
-	switch storageType {
-	case StorageTypeLocalMigrating, StorageTypeLocal:
-		storageParams.SRsWithTag = volumeContext["srsWithTag"]
-		if storageParams.SRsWithTag == "" {
-			return nil, status.Errorf(codes.InvalidArgument, "srsWithTag is required")
-		}
-	case StorageTypeShared:
-		storageParams.SRUUID = volumeContext["srUUID"]
-		if storageParams.SRUUID == "" {
-			return nil, status.Errorf(codes.InvalidArgument, "srUUID is required")
-		}
-	case StorageTypeStatic:
-		// We don't need any parameters
-	default:
-		return nil, status.Errorf(codes.InvalidArgument, "invalid storage type: %s", storageType)
-	}
-	return storageParams, nil
-}
-
-func (s *storageParmaters) GenerateVolumeContext() map[string]string {
-	d := map[string]string{
-		"type": string(s.Type),
-	}
-
-	switch s.Type {
-	case StorageTypeLocalMigrating, StorageTypeLocal:
-		d["srsWithTag"] = s.SRsWithTag
-	case StorageTypeShared:
-		d["srUUID"] = s.SRUUID
-	}
-
-	return d
+	Migrating  bool
 }
 
 func LoadStorageParameters(parameters map[string]string) (*storageParmaters, error) {
@@ -84,8 +44,9 @@ func LoadStorageParameters(parameters map[string]string) (*storageParmaters, err
 
 	storageType := StorageType(parameters["type"])
 	storageParams.Type = storageType
+	storageParams.Migrating = parameters["migrating"] == "true"
 	switch storageType {
-	case StorageTypeLocalMigrating, StorageTypeLocal:
+	case StorageTypeLocal:
 		srsWithTag := parameters["srsWithTag"]
 
 		if srsWithTag == "" {
@@ -109,9 +70,29 @@ func LoadStorageParameters(parameters map[string]string) (*storageParmaters, err
 	return storageParams, nil
 }
 
+func FromStorageInfo(storageInfo *StorageInfo) *storageParmaters {
+	return &storageParmaters{
+		Type:       StorageType(storageInfo.Type),
+		SRsWithTag: *storageInfo.SRsWithTag,
+		Migrating:  storageInfo.Migrating != nil,
+	}
+}
+
+func (s *storageParmaters) ToStorageInfo() *StorageInfo {
+	storageInfo := &StorageInfo{
+		Type:       s.Type,
+		SRsWithTag: &s.SRsWithTag,
+	}
+
+	if s.Migrating {
+		storageInfo.Migrating = &Migrating{}
+	}
+	return storageInfo
+}
+
 func (s *storageParmaters) getSRSelection() (StorageRepositorySelection, string, error) {
 	switch s.Type {
-	case StorageTypeLocalMigrating, StorageTypeLocal:
+	case StorageTypeLocal:
 		return StorageRepositorySelectionTag, s.SRsWithTag, nil
 	case StorageTypeShared:
 		return StorageRepositorySelectionUUID, s.SRUUID, nil
@@ -122,7 +103,7 @@ func (s *storageParmaters) getSRSelection() (StorageRepositorySelection, string,
 
 func (s *storageParmaters) VolumeIDType() VolumeIDType {
 	switch s.Type {
-	case StorageTypeLocalMigrating, StorageTypeLocal:
+	case StorageTypeLocal:
 		// Because the UUID changes when we migrate the volume to the other SRs
 		// we use the name as the volume ID (which stays the same)
 		// However, this is less robust than using the UUID, because the name is not unique

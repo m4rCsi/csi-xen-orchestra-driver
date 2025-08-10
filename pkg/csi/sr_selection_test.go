@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestPickSRForLocalMigrating(t *testing.T) {
+func TestPickSRForLocal(t *testing.T) {
 	srs := []xoa.SR{
 		{
 			UUID:  "sr-on-host1",
@@ -57,7 +57,7 @@ func TestPickSRForLocalMigrating(t *testing.T) {
 		},
 	}
 
-	sr, err := pickSRForLocalMigrating(srs, capacity, accessibilityRequirements)
+	sr, err := pickSRForLocal(srs, capacity, accessibilityRequirements)
 	if err != nil {
 		t.Fatalf("failed to pick SR: %v", err)
 	}

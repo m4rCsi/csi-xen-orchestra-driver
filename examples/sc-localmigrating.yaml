@@ -5,7 +5,8 @@ metadata:
 provisioner: csi.xen-orchestra.marcsi.ch
 parameters:
   csi.storage.k8s.io/fstype: ext4
-  type: localmigrating
+  type: local
   srsWithTag: k8s-localmigrating
+  migrating: "true"
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
