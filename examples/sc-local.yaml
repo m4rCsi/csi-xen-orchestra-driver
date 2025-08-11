@@ -1,9 +1,9 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: xoa-shared
+  name: xoa-local
 provisioner: csi.xen-orchestra.marcsi.ch
 parameters:
-  srWithTag: k8s-shared
-volumeBindingMode: Immediate
+  srsWithTag: k8s-local
+volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true

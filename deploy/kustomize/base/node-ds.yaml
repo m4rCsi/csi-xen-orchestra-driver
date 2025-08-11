@@ -43,10 +43,15 @@ spec:
         - "--endpoint=$(CSI_ENDPOINT)"
         - "--controller=false"
         - "--node=true"
+        - "--node-name=$(NODE_NAME)"
         - "--v=4"
         env:
         - name: CSI_ENDPOINT
           value: unix:///csi/csi.sock
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
         volumeMounts:
         - name: plugin-dir
           mountPath: /csi

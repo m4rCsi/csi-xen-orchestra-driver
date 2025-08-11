@@ -25,4 +25,9 @@ See [Driver Configuration](./driver-configuration.md) for configuration options.
 
 ## Example
 
-tbA
+Tag Storage Repositories with `k8s-shared`  (or `k8s-local`).
+
+```bash
+kubectl apply -f ./examples/sc-shared.yaml  # or ./examples/sc-local.yaml
+```
+

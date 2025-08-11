@@ -12,6 +12,7 @@ CSI Driver for Xen-orchestra-managed Xen-ng environments
 ## Requirements
 - Xen Orchestra (XO)
 - Kubernetes Cluster
+    - With [xenorchestra-cloud-controller-manager](https://github.com/vatesfr/xenorchestra-cloud-controller-manager/tree/main)
 - Kubernetes Nodes: 
   - `xe-guest-utils` installed
 
@@ -25,9 +26,10 @@ Expecting much broader compatibility, but for now only tested on 1.30 (with Talo
 
 ## Features
 - Dynamic provisioning (create disks on demand via PVCs)
-- Migration of local disks between hypvervisors (see: [Type: Local-Migrating](docs/type-localmigrating.md))
+- Migration of disks between storage repositories (see: [Disk Migrations](docs/disk-migrations.md))
 - Static provisioning (use an existing VDI by UUID)
 - Offline volume expansion
+- Topology aware
 
 ## Documentation
 
@@ -35,9 +37,9 @@ Start here
 - [Getting started](docs/getting-started.md)
 
 How to use the driver
-- [Type: Shared](docs/type-shared.md)
-- [Type: Local-Migrating](docs/type-localmigrating.md)
-- [Static volumes (pre-existing VDI)](docs/static.md)
+- selecting [Storage Repositories](docs/storage-repositories.md)
+- feature [Disk Migrations](docs/disk-migrations.md)
+- pre existing [Static volumes](docs/static.md)
 
 Configuration
 - [StorageClass parameters](docs/storage-class.md)

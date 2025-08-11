@@ -27,16 +27,16 @@ import (
 
 type NodeService struct {
 	csi.UnimplementedNodeServer
-	driver  *Driver
-	nodeID  string
-	mounter Mounter
+	driver       *Driver
+	mounter      Mounter
+	nodeMetadata NodeMetadataGetter
 }
 
-func NewNodeService(driver *Driver, mounter Mounter, nodeID string) *NodeService {
+func NewNodeService(driver *Driver, mounter Mounter, nodeMetadata NodeMetadataGetter) *NodeService {
 	return &NodeService{
-		driver:  driver,
-		nodeID:  nodeID,
-		mounter: mounter,
+		driver:       driver,
+		nodeMetadata: nodeMetadata,
+		mounter:      mounter,
 	}
 }
 
@@ -211,9 +211,26 @@ func (ns *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnp
 
 func (ns *NodeService) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	klog.V(2).InfoS("NodeGetInfo: called with args", "req", req)
-	klog.V(2).InfoS("NodeGetInfo: node", "nodeID", ns.nodeID)
+
+	nodeMetadata, err := ns.nodeMetadata.GetNodeMetadata()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get node id: %v", err)
+	}
+
+	segments := map[string]string{}
+	if nodeMetadata.HostId != "" {
+		segments["host"] = nodeMetadata.HostId
+	}
+
+	if nodeMetadata.PoolId != "" {
+		segments["pool"] = nodeMetadata.PoolId
+	}
+
 	return &csi.NodeGetInfoResponse{
-		NodeId: ns.nodeID,
+		NodeId: nodeMetadata.NodeId,
+		AccessibleTopology: &csi.Topology{
+			Segments: segments,
+		},
 	}, nil
 }
 

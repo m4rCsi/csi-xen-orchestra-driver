@@ -75,9 +75,9 @@ func setup() {
 		Fail("Failed to connect to fake client")
 	}
 
-	fakeClient.InjectSR(&xoa.SR{UUID: FakeSRUUID, Tags: []string{"k8s-localmigrating"}, Size: 1024 * 1024 * 1024 * 100, Usage: 0}) // SR with 100GB of free space
-	fakeClient.InjectVM(&xoa.VM{UUID: FakeNodeID})
-	fakeNodeMetadata := &FakeNodeMetadata{NodeID: FakeNodeID}
+	fakeClient.InjectSR(&xoa.SR{UUID: FakeSRUUID, Host: "fake-host-id", Pool: "fake-pool-id", Tags: []string{"k8s-local"}, Size: 1024 * 1024 * 1024 * 100, Usage: 0}) // SR with 100GB of free space
+	fakeClient.InjectVM(&xoa.VM{UUID: FakeNodeID, Host: "fake-host-id", Pool: "fake-pool-id"})
+	fakeNodeMetadata := &FakeNodeMetadata{NodeID: FakeNodeID, HostID: "fake-host-id", PoolID: "fake-pool-id"}
 
 	fakeMounter = NewFakeMounter()
 
@@ -118,7 +118,7 @@ func TestSanity(t *testing.T) {
 
 var _ = Describe("Xen CSI Driver", func() {
 
-	Describe("Sanity 'localmigrating' Storage", func() {
+	Describe("Sanity 'local' with migrating Storage", func() {
 		config := csisanity.NewTestConfig()
 		// Set configuration options as needed
 		config.Address = csiSocketPath
@@ -127,8 +127,41 @@ var _ = Describe("Xen CSI Driver", func() {
 		config.TestVolumeSize = 1024 * 1024 * 1024 * 10 // 10GB
 		config.TestVolumeAccessType = "mount"
 		config.TestVolumeParameters = map[string]string{
-			"type":       "localmigrating",
-			"srsWithTag": "k8s-localmigrating",
+			"type":       "local",
+			"srsWithTag": "k8s-local",
+			"migrating":  "true",
+		}
+
+		config.CheckPath = func(path string) (csisanity.PathKind, error) {
+			return fakeMounter.CheckPath(path)
+		}
+		config.CreateTargetDir = func(path string) (string, error) {
+			return fakeMounter.CreateDir(path)
+		}
+		config.RemoveTargetPath = func(path string) error {
+			return fakeMounter.RemovePath(path)
+		}
+		config.CreateStagingDir = func(path string) (string, error) {
+			return fakeMounter.CreateDir(path)
+		}
+		config.RemoveStagingPath = func(path string) error {
+			return fakeMounter.RemovePath(path)
+		}
+
+		csisanity.GinkgoTest(&config)
+	})
+
+	Describe("Sanity 'local' Storage", func() {
+		config := csisanity.NewTestConfig()
+		// Set configuration options as needed
+		config.Address = csiSocketPath
+		config.TargetPath = path.Join(tmpDirectory, "mount")
+		config.StagingPath = path.Join(tmpDirectory, "staging")
+		config.TestVolumeSize = 1024 * 1024 * 1024 * 10 // 10GB
+		config.TestVolumeAccessType = "mount"
+		config.TestVolumeParameters = map[string]string{
+			"type":       "local",
+			"srsWithTag": "k8s-local",
 		}
 
 		config.CheckPath = func(path string) (csisanity.PathKind, error) {

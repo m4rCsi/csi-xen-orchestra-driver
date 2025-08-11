@@ -97,9 +97,10 @@ Configuration tips:
 If your environment has slow disk creation in Xen Orchestra, increase the CSI sidecar timeouts to reduce retries (and thus leakage probability).
 
 - Provisioning path: the `csi-provisioner` container flag `--timeout` controls the gRPC call timeout to the driver.
+- Incase the timeout of the calls to xoa as well for `csi-xen-orchestra-driver` container with flag `--xoa-timeout`.
 
 
-In `deploy/kustomize/base/controller-deployment.yaml`, the defaults are set to `120s`. You can override them in your overlay. Example Kustomize strategic merge patch:
+In `deploy/kustomize/base/controller-deployment.yaml`, the defaults are set to `300s`. You can override them in your overlay. Example Kustomize strategic merge patch:
 
 ```yaml
 apiVersion: apps/v1
@@ -112,6 +113,11 @@ spec:
     spec:
       containers:
       - name: csi-provisioner
+        args:
+        ...
+        - --timeout=600s   # increase to 10 minutes
+        ...
+      - name: csi-xen-orchestra-driver
         args:
         ...
         - --timeout=600s   # increase to 10 minutes

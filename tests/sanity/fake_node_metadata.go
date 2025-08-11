@@ -14,10 +14,18 @@
 
 package sanity
 
+import "github.com/m4rCsi/csi-xen-orchestra-driver/pkg/csi"
+
 type FakeNodeMetadata struct {
 	NodeID string
+	HostID string
+	PoolID string
 }
 
-func (f *FakeNodeMetadata) GetNodeId() (string, error) {
-	return f.NodeID, nil
+func (f *FakeNodeMetadata) GetNodeMetadata() (*csi.NodeMetadata, error) {
+	return &csi.NodeMetadata{
+		NodeId: f.NodeID,
+		HostId: f.HostID,
+		PoolId: f.PoolID,
+	}, nil
 }

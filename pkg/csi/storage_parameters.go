@@ -15,121 +15,48 @@
 package csi
 
 import (
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	"errors"
+	"fmt"
+
+	"k8s.io/utils/ptr"
 )
 
 type StorageType string
-type StorageRepositorySelection string
 
-const (
-	StorageTypeShared         StorageType = "shared"
-	StorageTypeLocalMigrating StorageType = "localmigrating"
-	StorageTypeStatic         StorageType = "static"
-
-	StorageRepositorySelectionTag  StorageRepositorySelection = "tag"
-	StorageRepositorySelectionUUID StorageRepositorySelection = "uuid"
+var (
+	ErrInvalidStorageParameters = errors.New("invalid storage parameters")
 )
 
-type storageParmaters struct {
-	Type       StorageType
-	SRUUID     string
-	SRsWithTag string
+type storageParameters struct {
+	// Specific Storage Repository
+	// Type will be able to be deduced from the SRUUID (shared vs local)
+	SRUUID *string
+
+	// Selected Storage Repository/ies
+	SRsWithTag *string
+
+	// Allow the migration betwen SRs (with the same Tag).
+	// Does not make sense if SRUUID is set
+	Migrating bool
 }
 
-func LoadStorageParametersFromVolumeContext(volumeContext map[string]string) (*storageParmaters, error) {
-	storageParams := &storageParmaters{}
-	storageType := StorageType(volumeContext["type"])
-	if storageType == "" {
-		storageType = StorageTypeStatic
+func LoadStorageParameters(parameters map[string]string) (*storageParameters, error) {
+	storageParams := &storageParameters{}
+	storageParams.Migrating = parameters["migrating"] == "true"
+	if parameters["srUUID"] != "" {
+		storageParams.SRUUID = ptr.To(parameters["srUUID"])
 	}
-	storageParams.Type = storageType
-	switch storageType {
-	case StorageTypeLocalMigrating:
-		storageParams.SRsWithTag = volumeContext["srsWithTag"]
-		if storageParams.SRsWithTag == "" {
-			return nil, status.Errorf(codes.InvalidArgument, "srsWithTag is required")
-		}
-	case StorageTypeShared:
-		storageParams.SRUUID = volumeContext["srUUID"]
-		if storageParams.SRUUID == "" {
-			return nil, status.Errorf(codes.InvalidArgument, "srUUID is required")
-		}
-	case StorageTypeStatic:
-		// We don't need any parameters
-	default:
-		return nil, status.Errorf(codes.InvalidArgument, "invalid storage type: %s", storageType)
+
+	if parameters["srsWithTag"] != "" {
+		storageParams.SRsWithTag = ptr.To(parameters["srsWithTag"])
+	}
+
+	if parameters["srUUID"] != "" && parameters["srsWithTag"] != "" {
+		return nil, fmt.Errorf("%w: srUUID and srsWithTag cannot be set at the same time", ErrInvalidStorageParameters)
+	}
+
+	if storageParams.SRUUID != nil && storageParams.Migrating {
+		return nil, fmt.Errorf("%w: srUUID and migrating cannot be set at the same time", ErrInvalidStorageParameters)
 	}
 	return storageParams, nil
-}
-
-func (s *storageParmaters) GenerateVolumeContext() map[string]string {
-	d := map[string]string{
-		"type": string(s.Type),
-	}
-
-	switch s.Type {
-	case StorageTypeLocalMigrating:
-		d["srsWithTag"] = s.SRsWithTag
-	case StorageTypeShared:
-		d["srUUID"] = s.SRUUID
-	}
-
-	return d
-}
-
-func LoadStorageParameters(parameters map[string]string) (*storageParmaters, error) {
-	storageParams := &storageParmaters{}
-
-	storageType := StorageType(parameters["type"])
-	storageParams.Type = storageType
-	switch storageType {
-	case StorageTypeLocalMigrating:
-		srsWithTag := parameters["srsWithTag"]
-
-		if srsWithTag == "" {
-			return nil, status.Errorf(codes.InvalidArgument, "srsWithTag is required")
-		}
-
-		storageParams.SRsWithTag = srsWithTag
-	case StorageTypeShared:
-		srUUID := parameters["srUUID"]
-		if srUUID == "" {
-			return nil, status.Errorf(codes.InvalidArgument, "srUUID is required")
-		} else {
-			storageParams.SRUUID = srUUID
-		}
-	case "":
-		return nil, status.Errorf(codes.InvalidArgument, "type is required")
-	default:
-		return nil, status.Errorf(codes.InvalidArgument, "invalid storage type: %s", storageType)
-	}
-
-	return storageParams, nil
-}
-
-func (s *storageParmaters) getSRSelection() (StorageRepositorySelection, string, error) {
-	switch s.Type {
-	case StorageTypeLocalMigrating:
-		return StorageRepositorySelectionTag, s.SRsWithTag, nil
-	case StorageTypeShared:
-		return StorageRepositorySelectionUUID, s.SRUUID, nil
-	default:
-		return "", "", status.Errorf(codes.InvalidArgument, "invalid storage type: %s", s.Type)
-	}
-}
-
-func (s *storageParmaters) VolumeIDType() VolumeIDType {
-	switch s.Type {
-	case StorageTypeLocalMigrating:
-		// Because the UUID changes when we migrate the volume to the other SRs
-		// we use the name as the volume ID (which stays the same)
-		// However, this is less robust than using the UUID, because the name is not unique
-		// and can be changed by the user.
-		return NameAsVolumeID
-	case StorageTypeShared:
-		return UUIDAsVolumeID
-	default:
-		return UUIDAsVolumeID
-	}
 }

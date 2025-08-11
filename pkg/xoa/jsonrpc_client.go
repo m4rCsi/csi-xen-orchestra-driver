@@ -472,8 +472,6 @@ func (c *jsonRPCClient) CreateVDI(ctx context.Context, nameLabel, srUUID string,
 		"name": nameLabel,
 		"size": size,
 		"sr":   srUUID,
-		// "description": "test-description",
-		// "name_description": "test-description2",
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create VDI: %w", err)
@@ -565,10 +563,11 @@ func (c *jsonRPCClient) ConnectVBDAndWaitForDevice(ctx context.Context, vbdUUID 
 			}
 
 			if vbd.Attached && vbd.Device != "" {
+				klog.V(4).Infof("VBD %s is attached to device %s", vbdUUID, vbd.Device)
 				return vbd, nil
 			}
 
-			klog.V(4).Infof("VBD not yet created, continuing to poll...")
+			klog.V(5).Infof("VBD %s not yet created, continuing to poll...", vbdUUID)
 		}
 	}
 }
@@ -604,7 +603,7 @@ func (c *jsonRPCClient) AttachVDIAndWaitForDevice(ctx context.Context, vmUUID, v
 				}
 			}
 
-			klog.V(4).Infof("VBD not yet created, continuing to poll...")
+			// klog.V(4).Infof("VBD not yet created, continuing to poll...")
 		}
 	}
 }
@@ -638,6 +637,12 @@ func (c *jsonRPCClient) GetVBDs(ctx context.Context, filter map[string]any) ([]V
 func (c *jsonRPCClient) GetVBDsByVMAndVDI(ctx context.Context, vmUUID, vdiUUID string) ([]VBD, error) {
 	return c.GetVBDs(ctx, map[string]any{
 		"VM":  vmUUID,
+		"VDI": vdiUUID,
+	})
+}
+
+func (c *jsonRPCClient) GetVBDsByVDI(ctx context.Context, vdiUUID string) ([]VBD, error) {
+	return c.GetVBDs(ctx, map[string]any{
 		"VDI": vdiUUID,
 	})
 }
