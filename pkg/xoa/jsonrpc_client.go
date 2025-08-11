@@ -472,8 +472,6 @@ func (c *jsonRPCClient) CreateVDI(ctx context.Context, nameLabel, srUUID string,
 		"name": nameLabel,
 		"size": size,
 		"sr":   srUUID,
-		// "description": "test-description",
-		// "name_description": "test-description2",
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create VDI: %w", err)
@@ -605,7 +603,7 @@ func (c *jsonRPCClient) AttachVDIAndWaitForDevice(ctx context.Context, vmUUID, v
 				}
 			}
 
-			klog.V(4).Infof("VBD not yet created, continuing to poll...")
+			// klog.V(4).Infof("VBD not yet created, continuing to poll...")
 		}
 	}
 }

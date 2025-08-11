@@ -92,7 +92,7 @@ spec:
         args:
         - "--endpoint=$(CSI_ENDPOINT)"
         - "--controller=true"
-        - "--node=false"
+        - "--xoa-timeout=300s"
         - "--v=4"
         env:
         - name: CSI_ENDPOINT

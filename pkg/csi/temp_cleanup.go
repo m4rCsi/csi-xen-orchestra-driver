@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	TempCleanupInterval                     = 5 * time.Minute
-	TempCleanupMarkAsDeletionCandidateAfter = 9 * time.Minute
+	TempCleanupInterval                     = 2 * time.Minute
+	TempCleanupMarkAsDeletionCandidateAfter = 10 * time.Minute
 	TempCleanupThreshold                    = 30 * time.Minute
 )
 
@@ -38,6 +38,7 @@ type TempCleanup struct {
 	diskNameGenerator *DiskNameGenerator
 	creationLock      *CreationLock
 
+	// keep a list of VDIs that we have seen, and the time we saw them.
 	firstSeen map[string]time.Time
 }
 
@@ -49,6 +50,7 @@ func NewTempCleanup(xoaClient xoa.Client, diskNameGenerator *DiskNameGenerator, 
 		cancel:            cancel,
 		diskNameGenerator: diskNameGenerator,
 		creationLock:      creationLock,
+		firstSeen:         make(map[string]time.Time),
 	}
 }
 
@@ -96,7 +98,13 @@ func (t *TempCleanup) cleanup(ctx context.Context) {
 		return
 	}
 
+	// Track all VDI UUIDs in this run, so we have an easier time removing stale entries from firstSeen.
+	seenNow := make(map[string]struct{})
+
 	for i, vdi := range vdis {
+		// Mark as seen regardless of metadata state
+		seenNow[vdi.UUID] = struct{}{}
+
 		if !t.diskNameGenerator.IsTemporaryDisk(vdi.NameLabel) {
 			continue
 		}
@@ -130,6 +138,14 @@ func (t *TempCleanup) cleanup(ctx context.Context) {
 			}
 		case *StorageInfo:
 			// This should not be on a temporary disk. We simply ignore it.
+		}
+	}
+
+	// Remove any VDI from firstSeen that we did not observe at all during this run
+	// (i.e., it no longer exists).
+	for uuid := range t.firstSeen {
+		if _, ok := seenNow[uuid]; !ok {
+			delete(t.firstSeen, uuid)
 		}
 	}
 }

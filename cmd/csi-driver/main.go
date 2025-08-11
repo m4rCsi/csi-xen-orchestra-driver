@@ -38,6 +38,7 @@ var (
 	nameOverride   = flag.String("driver-name-override", "", "Driver name override")
 	diskNamePrefix = flag.String("disk-name-prefix", "", "Disk name prefix")
 	tempCleanup    = flag.Bool("temp-cleanup", false, "Run temporary cleanup")
+	xoaTimeout     = flag.Duration("xoa-timeout", 300*time.Second, "Timeout for XOA API calls")
 )
 
 func main() {
@@ -69,6 +70,7 @@ func main() {
 		xc, err := xoa.NewJSONRPCClient(xoa.ClientConfig{
 			BaseURL: xoaURL,
 			Token:   xoaToken,
+			Timeout: *xoaTimeout,
 		})
 		if err != nil {
 			klog.Fatalf("failed to create XOA API client: %v", err)
