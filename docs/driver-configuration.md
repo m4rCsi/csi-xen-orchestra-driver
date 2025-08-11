@@ -36,6 +36,7 @@ kubectl create secret generic csi-xen-orchestra-credentials \
 | --- | --- | --- | --- | --- |
 | `--disk-name-prefix` | `csi-` | string | Prefix added to all driver-managed disk names. Helps keep names unique across clusters sharing the same XO. | Multiple clusters using the same Xen Orchestra; clearer naming/segregation. |
 | `--temp-cleanup` | `false` | bool | Enables background cleanup of leaked temporary disks (created as `csi-temp-...`). | If disk creation can exceed the provisioner timeout. See [Disk creation leakage](disk-creation-leakage.md). |
+| `--xoa-timeout`  | `300s`  | duration | timeout for calls to Xen Orchestra | If disk creation can take longer than `300s` increase this together with the provisioner timeout |
 
 Notes:
 - Temporary disks use the prefix `<disk-name-prefix>temp-` (e.g., `csi-temp-`).
