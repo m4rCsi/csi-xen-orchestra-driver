@@ -4,6 +4,5 @@ metadata:
   name: xoa-shared
 provisioner: csi.xen-orchestra.marcsi.ch
 parameters:
-  csi.storage.k8s.io/fstype: ext4
-  srUUID: 15607a67-58c5-ac9c-45ca-7c3659bdfa19 # NFS SR
+  srsWithTag: k8s-shared
 allowVolumeExpansion: true

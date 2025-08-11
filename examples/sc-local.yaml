@@ -4,7 +4,6 @@ metadata:
   name: xoa-local
 provisioner: csi.xen-orchestra.marcsi.ch
 parameters:
-  csi.storage.k8s.io/fstype: ext4
-  srsWithTag: k8s-localmigrating
+  srsWithTag: k8s-local
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true

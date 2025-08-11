@@ -3,9 +3,9 @@
 Start here:
 - [Getting started](getting-started.md)
 
-How to use the driver:
-- [Shared](type-shared.md)
-- [Local-Migrating](type-localmigrating.md)
+Details:
+- [Storage Repositories](storage-repositories.md)
+- [Disk Migrations](disk-migrations.md)
 - [Static (pre-existing VDI)](static.md)
 
 Configuration:

@@ -4,7 +4,6 @@ metadata:
   name: xoa-local-migrating
 provisioner: csi.xen-orchestra.marcsi.ch
 parameters:
-  csi.storage.k8s.io/fstype: ext4
   migrating: "true"
-  srsWithTag: k8s-localmigrating # Local SRs tagged accross all hosts
+  srsWithTag: k8s-local # Local SRs tagged accross all hosts
 allowVolumeExpansion: true
