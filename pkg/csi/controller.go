@@ -312,7 +312,7 @@ func (cs *ControllerService) ControllerUnpublishVolume(ctx context.Context, req 
 			// VDI not found, nothing to do
 			return &csi.ControllerUnpublishVolumeResponse{}, nil
 		} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
-			return nil, status.Errorf(codes.Internal, "multiple VDIs found with same name")
+			return nil, status.Errorf(codes.Unavailable, "multiple VDIs found with same name, likely migration in progress, please try again later")
 		} else if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to get VDI: %v", err)
 		}
@@ -353,7 +353,7 @@ func (cs *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req
 		if errors.Is(err, xoa.ErrObjectNotFound) {
 			return nil, status.Errorf(codes.NotFound, "volume not found")
 		} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
-			return nil, status.Errorf(codes.Internal, "multiple VDIs found with same name")
+			return nil, status.Errorf(codes.Unavailable, "multiple VDIs found with same name, likely migration in progress, please try again later")
 		} else if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
 		}
@@ -400,7 +400,7 @@ func (cs *ControllerService) ControllerExpandVolume(ctx context.Context, req *cs
 		if errors.Is(err, xoa.ErrObjectNotFound) {
 			return nil, status.Errorf(codes.NotFound, "volume not found")
 		} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
-			return nil, status.Errorf(codes.Internal, "multiple VDIs found with same name")
+			return nil, status.Errorf(codes.Unavailable, "multiple VDIs found with same name, likely migration in progress, please try again later")
 		} else if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
 		}
@@ -426,6 +426,19 @@ func (cs *ControllerService) ControllerExpandVolume(ctx context.Context, req *cs
 
 	if req.GetCapacityRange() == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "capacity range is required")
+	}
+
+	metadata, err := EmbeddedVDIMetadataFromDescription(vdi.NameDescription)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get migration data from VDI description: %v", err)
+	}
+	switch m := metadata.(type) {
+	case *StorageInfo:
+		if yes, targetSRUUID := m.HasOngoingMigration(); yes {
+			return nil, status.Errorf(codes.Unavailable, "VDI is being migrated to %s, we can not expand it", targetSRUUID)
+		}
+	default:
+		return nil, status.Errorf(codes.Internal, "unhandled VDI metadata type: %T", m)
 	}
 
 	newCapacity := req.GetCapacityRange().GetRequiredBytes()
@@ -610,7 +623,7 @@ func (cs *ControllerService) findDisk(ctx context.Context, volumeID string) (*xo
 			return nil, nil, status.Errorf(codes.NotFound, "VDI not found")
 		} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
 			// This may happen if the VDI is being migrated
-			return nil, nil, status.Errorf(codes.Unavailable, "multiple VDIs found with same name (temporary error)")
+			return nil, nil, status.Errorf(codes.Unavailable, "multiple VDIs found with same name, likely migration in progress, please try again later")
 		} else if err != nil {
 			return nil, nil, status.Errorf(codes.Internal, "failed to get VDI: %v", err)
 		}
@@ -716,6 +729,14 @@ func (cs *ControllerService) migrateVDI(ctx context.Context, vdi *xoa.VDI, vm *x
 	pickedSR, err := storageSelection.pickSRForHost(vm.Host, vdi.Size)
 	if err != nil {
 		return nil, nil, status.Errorf(codes.Internal, "failed to pick SR: %v", err)
+	}
+
+	vbds, err := cs.xoaClient.GetVBDsByVDI(ctx, vdi.UUID)
+	if err != nil {
+		return nil, nil, status.Errorf(codes.Internal, "failed to get VBDs: %v", err)
+	}
+	if len(vbds) > 0 {
+		return nil, nil, status.Errorf(codes.Unavailable, "VDI is attached to at least one VM, we can not migrate it, while it is attached")
 	}
 
 	storageInfo := storageSelection.toStorageInfo()

@@ -642,6 +642,12 @@ func (c *jsonRPCClient) GetVBDsByVMAndVDI(ctx context.Context, vmUUID, vdiUUID s
 	})
 }
 
+func (c *jsonRPCClient) GetVBDsByVDI(ctx context.Context, vdiUUID string) ([]VBD, error) {
+	return c.GetVBDs(ctx, map[string]any{
+		"VDI": vdiUUID,
+	})
+}
+
 func (c *jsonRPCClient) GetOneVBD(ctx context.Context, filter map[string]any) (*VBD, error) {
 	vbds, err := c.GetVBDs(ctx, filter)
 	if err != nil {

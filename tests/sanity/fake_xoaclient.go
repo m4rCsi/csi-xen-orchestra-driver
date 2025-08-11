@@ -478,6 +478,23 @@ func (f *FakeClient) GetVBDsByVMAndVDI(ctx context.Context, vmUUID, vdiUUID stri
 	return vbds, nil
 }
 
+func (f *FakeClient) GetVBDsByVDI(ctx context.Context, vdiUUID string) ([]xoa.VBD, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if err := f.checkConnection(); err != nil {
+		return nil, err
+	}
+
+	vbds := make([]xoa.VBD, 0, len(f.vbds))
+	for _, vbd := range f.vbds {
+		if vbd.VDI == vdiUUID {
+			vbds = append(vbds, *vbd)
+		}
+	}
+	return vbds, nil
+}
+
 // GetVBDByUUID returns a specific VBD by UUID
 func (f *FakeClient) GetVBDByUUID(ctx context.Context, vbdUUID string) (*xoa.VBD, error) {
 	f.mu.RLock()

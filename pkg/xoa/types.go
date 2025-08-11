@@ -59,6 +59,7 @@ type Client interface {
 	// VBD (Virtual Block Device) operations
 	GetVBDs(ctx context.Context, filter map[string]any) ([]VBD, error)
 	GetOneVBD(ctx context.Context, filter map[string]any) (*VBD, error)
+	GetVBDsByVDI(ctx context.Context, vmUUID string) ([]VBD, error)
 	GetVBDsByVMAndVDI(ctx context.Context, vmUUID, vdiUUID string) ([]VBD, error)
 	GetVBDByUUID(ctx context.Context, vbdUUID string) (*VBD, error)
 
