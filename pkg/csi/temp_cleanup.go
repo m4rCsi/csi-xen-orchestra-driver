@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	TempCleanupInterval  = 5 * time.Minute
-	TempCleanupThreshold = 30 * time.Minute
+	TempCleanupInterval                     = 5 * time.Minute
+	TempCleanupMarkAsDeletionCandidateAfter = 9 * time.Minute
+	TempCleanupThreshold                    = 30 * time.Minute
 )
 
 type TempCleanup struct {
@@ -36,6 +37,8 @@ type TempCleanup struct {
 
 	diskNameGenerator *DiskNameGenerator
 	creationLock      *CreationLock
+
+	firstSeen map[string]time.Time
 }
 
 func NewTempCleanup(xoaClient xoa.Client, diskNameGenerator *DiskNameGenerator, creationLock *CreationLock) *TempCleanup {
@@ -72,15 +75,19 @@ func (t *TempCleanup) Stop() {
 		t.timer.Stop()
 	}
 	t.cancel()
-
 }
 
-// cleanup process.
-// Deletion happens when:
-// - they are (still) prefixed with VDIDiskPrefixTemporary
-// - they have the deletion candidate description
-// Therefore, as long as the creation of a disk is faster than the TempCleanupThreshold, we can safely delete the disk.
-// The main risk here is that the VDIDiskPrefixTemporary is selecting disks that are not managed by this driver.
+// Cleanup process:
+// (1) Mark as deletion candidate: (after TempCleanupMarkAsDeletionCandidateAfter)
+//
+//	If we observe this same VDI multiple times for longer than TempCleanupMarkAsDeletionCandidateAfter, we mark it as a deletion candidate.
+//	Before marking, we do a double check to make sure the VDI is still a temporary disk, and has not been renamed or modified.
+//	When the controller is restarted, we start fresh.
+//
+// (2) Delete: (after TempCleanupThreshold)
+//
+//	When the VDI is (still) prefixed with VDIDiskPrefixTemporary and has the deletion candidate description, we delete it.
+//	This process survives a restart of the controller.
 func (t *TempCleanup) cleanup(ctx context.Context) {
 	klog.InfoS("Starting temp cleanup")
 	vdis, err := t.xoaClient.GetVDIs(ctx, nil)
@@ -103,8 +110,14 @@ func (t *TempCleanup) cleanup(ctx context.Context) {
 
 		switch metadata := metadata.(type) {
 		case *NoMetadata:
-			// No metadata, so we should consider to mark this VDI as a deletion candidate.
-			t.setDeletionCandidate(ctx, &vdis[i])
+			if val, ok := t.firstSeen[vdi.UUID]; ok {
+				if time.Since(val) > TempCleanupMarkAsDeletionCandidateAfter {
+					klog.InfoS("VDI has been observed multiple times now, marking as deletion candidate", "vdi", vdi.NameLabel)
+					t.setDeletionCandidate(ctx, &vdis[i])
+				}
+			} else {
+				t.firstSeen[vdi.UUID] = time.Now()
+			}
 		case *DeletionCandidate:
 			if metadata.GetUnusedSince().Before(time.Now().Add(-1 * TempCleanupThreshold)) {
 				klog.InfoS("Deletion Candiate is old enough, deleting VDI", "vdi", vdi.NameLabel)
