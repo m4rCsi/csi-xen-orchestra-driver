@@ -23,13 +23,14 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-func TestPickSR(t *testing.T) {
+func TestPickLocalSR(t *testing.T) {
 	srs := []xoa.SR{
 		{UUID: "sr-on-host1-pool1", Usage: 100, Size: 1000, Host: "host1", Pool: "pool1"},
 		{UUID: "sr-on-host2-pool1", Usage: 200, Size: 1000, Host: "host2", Pool: "pool1"},
 		{UUID: "sr-on-host3-pool1", Usage: 000, Size: 1000, Host: "host3", Pool: "pool1"},
-		{UUID: "sr-on-host3-pool2", Usage: 300, Size: 1000, Host: "host1", Pool: "pool2"},
-		{UUID: "sr-on-host4-pool2", Usage: 400, Size: 1000, Host: "host2", Pool: "pool2"},
+
+		{UUID: "sr-on-host4-pool2", Usage: 000, Size: 1000, Host: "host1", Pool: "pool2"},
+		{UUID: "sr-on-host5-pool2", Usage: 200, Size: 1000, Host: "host2", Pool: "pool2"},
 	}
 
 	testCases := []struct {
@@ -37,9 +38,9 @@ func TestPickSR(t *testing.T) {
 		name string
 
 		// Inputs
-		topology *csi.TopologyRequirement
-		scope    SRFilterScope
-		capacity int64
+		requiredTopology *csi.TopologyRequirement
+		volumeScope      VolumeScope // VolumeScopeHost, and VolumeScopeGlobal when migrating
+		volumeCapacity   int64
 
 		// Output
 		expectedSRUUID string
@@ -47,7 +48,7 @@ func TestPickSR(t *testing.T) {
 	}{
 		{
 			name: "host-scoped: pick preferred",
-			topology: &csi.TopologyRequirement{
+			requiredTopology: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{Segments: map[string]string{"host": "host1", "pool": "pool1"}},
 					{Segments: map[string]string{"host": "host2", "pool": "pool1"}},
@@ -56,13 +57,13 @@ func TestPickSR(t *testing.T) {
 					{Segments: map[string]string{"host": "host2", "pool": "pool1"}},
 				},
 			},
-			scope:          SRFilterScopeHost,
-			capacity:       100,
+			volumeScope:    VolumeScopeHost,
+			volumeCapacity: 100,
 			expectedSRUUID: "sr-on-host2-pool1",
 		},
 		{
 			name: "host-scoped: preferred not enough space",
-			topology: &csi.TopologyRequirement{
+			requiredTopology: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{Segments: map[string]string{"host": "host1", "pool": "pool1"}},
 					{Segments: map[string]string{"host": "host2", "pool": "pool1"}},
@@ -71,13 +72,13 @@ func TestPickSR(t *testing.T) {
 					{Segments: map[string]string{"host": "host2", "pool": "pool1"}},
 				},
 			},
-			scope:          SRFilterScopeHost,
-			capacity:       850,
+			volumeScope:    VolumeScopeHost,
+			volumeCapacity: 850,
 			expectedSRUUID: "sr-on-host1-pool1",
 		},
 		{
 			name: "host-scoped: not enough space in topology",
-			topology: &csi.TopologyRequirement{
+			requiredTopology: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{Segments: map[string]string{"host": "host1", "pool": "pool1"}},
 					{Segments: map[string]string{"host": "host2", "pool": "pool1"}},
@@ -86,14 +87,13 @@ func TestPickSR(t *testing.T) {
 					{Segments: map[string]string{"host": "host2", "pool": "pool1"}},
 				},
 			},
-			scope:         SRFilterScopeHost,
-			capacity:      950,
-			expectedError: ErrNoSpace,
+			volumeScope:    VolumeScopeHost,
+			volumeCapacity: 950,
+			expectedError:  ErrNoSpace,
 		},
 		{
-			// TODO: Is this right? Investigate if we can pick a host that is not in the requisite topology if we are scoped by pool
-			name: "pool-scoped: not enough space in topology",
-			topology: &csi.TopologyRequirement{
+			name: "global-scoped: not enough space in topology in preferred or requisite",
+			requiredTopology: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{Segments: map[string]string{"host": "host1", "pool": "pool1"}},
 					{Segments: map[string]string{"host": "host2", "pool": "pool1"}},
@@ -102,8 +102,8 @@ func TestPickSR(t *testing.T) {
 					{Segments: map[string]string{"host": "host2", "pool": "pool1"}},
 				},
 			},
-			scope:          SRFilterScopePool,
-			capacity:       950,
+			volumeScope:    VolumeScopeGlobal,
+			volumeCapacity: 950,
 			expectedSRUUID: "sr-on-host3-pool1",
 		},
 		// TODO: Add tests for more pool scoped and global scoped
@@ -111,7 +111,7 @@ func TestPickSR(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			sr, err := pickSR(srs, testCase.capacity, testCase.topology, testCase.scope)
+			sr, err := pickSR(srs, testCase.volumeCapacity, testCase.requiredTopology, testCase.volumeScope)
 			if testCase.expectedError != nil {
 				assert.ErrorIs(t, err, testCase.expectedError)
 			} else {
@@ -127,20 +127,20 @@ func TestScope(t *testing.T) {
 		SRsWithTag: ptr.To("k8s-local"),
 	})
 
-	assert.Equal(t, storageSelectionTag.getScope(), SRFilterScopeHost)
+	assert.Equal(t, storageSelectionTag.getVolumeScope(), VolumeScopeHost)
 
 	storageSelectionUUID := storageSelectionFromParameters(&storageParameters{
 		SRUUID: ptr.To("sr-on-host1"),
 	})
 
-	assert.Equal(t, storageSelectionUUID.getScope(), SRFilterScopeHost)
+	assert.Equal(t, storageSelectionUUID.getVolumeScope(), VolumeScopeHost)
 
 	storageSelectionMigrating := storageSelectionFromParameters(&storageParameters{
 		SRsWithTag: ptr.To("k8s-local"),
 		Migrating:  true,
 	})
 
-	assert.Equal(t, storageSelectionMigrating.getScope(), SRFilterScopeGlobal)
+	assert.Equal(t, storageSelectionMigrating.getVolumeScope(), VolumeScopeGlobal)
 }
 
 func TestGetTopologyForVDI(t *testing.T) {
@@ -148,5 +148,5 @@ func TestGetTopologyForVDI(t *testing.T) {
 		SRsWithTag: ptr.To("k8s-local"),
 	})
 
-	assert.Equal(t, storageSelectionTag.getScope(), SRFilterScopeHost)
+	assert.Equal(t, storageSelectionTag.getVolumeScope(), VolumeScopeHost)
 }

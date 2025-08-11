@@ -37,12 +37,12 @@ const (
 	StorageRepositorySelectionUUID StorageRepositorySelection = "uuid"
 )
 
-type SRFilterScope string
+type VolumeScope string
 
 const (
-	SRFilterScopeHost   SRFilterScope = "host"
-	SRFilterScopePool   SRFilterScope = "pool"
-	SRFilterScopeGlobal SRFilterScope = "global"
+	VolumeScopeHost   VolumeScope = "host"
+	VolumeScopePool   VolumeScope = "pool"
+	VolumeScopeGlobal VolumeScope = "global"
 )
 
 type storageSelection struct {
@@ -117,16 +117,16 @@ func storageSelectionFromStorageInfo(si *StorageInfo, vdi *xoa.VDI) *storageSele
 	return sr
 }
 
-func (s *storageSelection) getScope() SRFilterScope {
+func (s *storageSelection) getVolumeScope() VolumeScope {
 	if s.Migrating {
-		return SRFilterScopeGlobal
+		return VolumeScopeGlobal
 	}
 
 	if s.SharedSR {
-		return SRFilterScopePool
+		return VolumeScopePool
 	}
 
-	return SRFilterScopeHost
+	return VolumeScopeHost
 }
 
 // finds relevant SRs based on the inforomation we are given. If we are also given a VDI, we will get the current SR from it.
@@ -200,10 +200,10 @@ func (s *storageSelection) pickSRForTopology(capacity int64, req *csi.TopologyRe
 	case StorageRepositorySelectionTag:
 		if !s.SharedSR {
 			// Local SRs are scoped by `host`
-			return pickSR(s.SRs, capacity, req, SRFilterScopeHost)
+			return pickSR(s.SRs, capacity, req, VolumeScopeHost)
 		} else {
 			// Shared SRs are scoped by `pool`
-			return pickSR(s.SRs, capacity, req, SRFilterScopePool)
+			return pickSR(s.SRs, capacity, req, VolumeScopePool)
 		}
 	default:
 		return nil, fmt.Errorf("invalid storage selection type: %s", s.StorageSelectionType)
@@ -275,20 +275,20 @@ func pickSRWithMostSpace(srs []xoa.SR, capacity int64) (*xoa.SR, error) {
 	return &bestSR, nil
 }
 
-func filterSrsByTopology(srs []xoa.SR, topologies []*csi.Topology, scope SRFilterScope) []xoa.SR {
+func filterSrsByTopology(srs []xoa.SR, topologies []*csi.Topology, scope VolumeScope) []xoa.SR {
 	var filteredSrs []xoa.SR
 	for _, topology := range topologies {
 		for _, sr := range srs {
 			switch scope {
-			case SRFilterScopeHost:
+			case VolumeScopeHost:
 				if sr.Host == topology.Segments["host"] && sr.Pool == topology.Segments["pool"] {
 					filteredSrs = append(filteredSrs, sr)
 				}
-			case SRFilterScopePool:
+			case VolumeScopePool:
 				if sr.Pool == topology.Segments["pool"] {
 					filteredSrs = append(filteredSrs, sr)
 				}
-			case SRFilterScopeGlobal:
+			case VolumeScopeGlobal:
 				// Global scope is not filtered by topology
 				filteredSrs = append(filteredSrs, sr)
 			}
@@ -297,7 +297,7 @@ func filterSrsByTopology(srs []xoa.SR, topologies []*csi.Topology, scope SRFilte
 	return filteredSrs
 }
 
-func pickSR(srs []xoa.SR, capacity int64, accessibilityRequirements *csi.TopologyRequirement, scope SRFilterScope) (*xoa.SR, error) {
+func pickSR(srs []xoa.SR, capacity int64, accessibilityRequirements *csi.TopologyRequirement, scope VolumeScope) (*xoa.SR, error) {
 	// If we have preferred topo, let's first try to find a SR that matches it
 	var filteredPreferredSrs []xoa.SR
 	if accessibilityRequirements != nil {
@@ -341,10 +341,10 @@ func (s *storageSelection) getTopologyForVDI(vdi *xoa.VDI) ([]*csi.Topology, err
 		return nil, fmt.Errorf("%w: SR with UUID %s not found", ErrNoSRFound, vdi.SR)
 	}
 
-	switch s.getScope() {
-	case SRFilterScopeGlobal:
+	switch s.getVolumeScope() {
+	case VolumeScopeGlobal:
 		return nil, nil
-	case SRFilterScopeHost:
+	case VolumeScopeHost:
 		return []*csi.Topology{
 			{
 				Segments: map[string]string{
@@ -353,7 +353,7 @@ func (s *storageSelection) getTopologyForVDI(vdi *xoa.VDI) ([]*csi.Topology, err
 				},
 			},
 		}, nil
-	case SRFilterScopePool:
+	case VolumeScopePool:
 		return []*csi.Topology{
 			{
 				Segments: map[string]string{
@@ -362,6 +362,6 @@ func (s *storageSelection) getTopologyForVDI(vdi *xoa.VDI) ([]*csi.Topology, err
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("invalid scope: %s", s.getScope())
+		return nil, fmt.Errorf("invalid scope: %s", s.getVolumeScope())
 	}
 }
