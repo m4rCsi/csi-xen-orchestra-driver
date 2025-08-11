@@ -43,24 +43,6 @@ func NewControllerService(driver *Driver, xoaClient xoa.Client, diskNameGenerato
 	}
 }
 
-func (cs *ControllerService) cleanupAllDisks(ctx context.Context, name string) error {
-	vdis, err := cs.xoaClient.GetVDIs(ctx, map[string]any{
-		"name_label": name,
-	})
-	if err != nil {
-		return status.Errorf(codes.Internal, "failed to get disks: %v", err)
-	}
-
-	for _, vdi := range vdis {
-		err = cs.xoaClient.DeleteVDI(ctx, vdi.UUID)
-		if err != nil {
-			return status.Errorf(codes.Internal, "failed to delete disk: %v", err)
-		}
-	}
-
-	return nil
-}
-
 func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	klog.V(2).InfoS("CreateVolume: called with args", "req", req)
 
@@ -97,16 +79,20 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 		capacity = req.GetCapacityRange().GetRequiredBytes()
 	} else {
 		// default to 1GB
-		capacity = 1024 * 1024 * 1024 // 1GB
+		capacity = 1024 * 1024 * 1024
 	}
 
 	storageSelection := storageSelectionFromParameters(storageParams)
 	err = storageSelection.findSRs(ctx, cs.xoaClient)
-	if err != nil {
+	if errors.Is(err, ErrNoSRFound) {
+		return nil, status.Errorf(codes.FailedPrecondition, "no SRs found for storage selection")
+	} else if errors.Is(err, ErrInconsistentSRs) {
+		return nil, status.Errorf(codes.FailedPrecondition, "inconsistent SRs found for storage selection")
+	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to find SRs: %v", err)
 	}
 
-	var vdi *xoa.VDI // the vdi object
+	var vdi *xoa.VDI
 
 	// Check first, if the disk with the right name already exists
 	diskName := cs.diskNameGenerator.FromVolumeName(volumeName)
@@ -258,7 +244,11 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 
 	storageSelection := storageSelectionFromStorageInfo(storageInfo, vdi)
 	err = storageSelection.findSRs(ctx, cs.xoaClient)
-	if err != nil {
+	if errors.Is(err, ErrNoSRFound) {
+		return nil, status.Errorf(codes.FailedPrecondition, "no SRs found for storage selection")
+	} else if errors.Is(err, ErrInconsistentSRs) {
+		return nil, status.Errorf(codes.FailedPrecondition, "inconsistent SRs found for storage selection")
+	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to find SRs: %v", err)
 	}
 
@@ -548,15 +538,14 @@ func (cs *ControllerService) ControllerGetCapabilities(ctx context.Context, req 
 }
 
 // createDisk: createDisk based on volumeName, and with capacity and storageSelection
+// We create a disk with a temporary name as a first step.
+// A disk creation can take a long time and we might reach the timeout.
+// If this is the case, a new creation disk will be started, and we don't have a good way to know if there is one already underway.
+// With this prefix, we will be able to see if there are any temporary disks and remove them.
 func (cs *ControllerService) createDisk(ctx context.Context, storageSelection *storageSelection, volumeName string, capacity int64, topologyRequirement *csi.TopologyRequirement) (*xoa.VDI, error) {
 	cs.creationLock.CreationLock()
 	defer cs.creationLock.CreationUnlock()
 
-	// We create a disk with a temporary name as a first step.
-	// A disk creation can take a long time and we might reach the timeout.
-	// If this is the case, a new creation disk will be started, and we don't have a good way to know if there is one already underway.
-	// With this prefix, we will be able to see if there are any temporary disks and remove them.
-	// TODO: Implement a cleanup mechanism to remove temporary disks.
 	var vdiUUID string
 
 	diskName := cs.diskNameGenerator.FromVolumeName(volumeName)
@@ -567,7 +556,7 @@ func (cs *ControllerService) createDisk(ctx context.Context, storageSelection *s
 		// volume does not exist
 		// continue with creation
 	} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
-		// TODO, just pick up the first one and continue
+		// TODO: Improvement: just pick up the first one and continue
 		err = cs.cleanupAllDisks(ctx, temporaryDiskName)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "multiple disks found with same name, but failed to cleanup temporary disks: %v", err)
@@ -598,7 +587,6 @@ func (cs *ControllerService) createDisk(ctx context.Context, storageSelection *s
 		return nil, status.Errorf(codes.Internal, "failed to edit disk: %v", err)
 	}
 
-	// TODO: Refactor, we should not need to look it up again.
 	createdVDI, err := cs.xoaClient.GetVDIByUUID(ctx, vdiUUID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get created VDI: %v", err)
@@ -763,4 +751,22 @@ func (cs *ControllerService) migrateVDI(ctx context.Context, vdi *xoa.VDI, vm *x
 
 	klog.Infof("VDI %s finished migration to %s", foundVdi.UUID, pickedSR.UUID)
 	return foundVdi, pickedSR, nil
+}
+
+func (cs *ControllerService) cleanupAllDisks(ctx context.Context, name string) error {
+	vdis, err := cs.xoaClient.GetVDIs(ctx, map[string]any{
+		"name_label": name,
+	})
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to get disks: %v", err)
+	}
+
+	for _, vdi := range vdis {
+		err = cs.xoaClient.DeleteVDI(ctx, vdi.UUID)
+		if err != nil {
+			return status.Errorf(codes.Internal, "failed to delete disk: %v", err)
+		}
+	}
+
+	return nil
 }

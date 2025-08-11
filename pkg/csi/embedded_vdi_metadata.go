@@ -50,7 +50,6 @@ func (n *NoMetadata) ToVDIDescription() string {
 	return ""
 }
 
-// Constructor functions
 func NewStorageInfoWithMigrating(srsWithTag string) *StorageInfo {
 	return &StorageInfo{
 		Migrating: &Migrating{},

@@ -143,7 +143,7 @@ func (s *storageSelection) findSRs(ctx context.Context, xoaClient xoa.Client) er
 
 		sr, err := xoaClient.GetSRByUUID(ctx, *s.SRUUID)
 		if errors.Is(err, xoa.ErrObjectNotFound) {
-			return fmt.Errorf("SR with UUID %s not found", *s.SRUUID)
+			return fmt.Errorf("%w: SR with UUID %s not found", ErrNoSRFound, *s.SRUUID)
 		} else if err != nil {
 			return err
 		}
@@ -160,8 +160,7 @@ func (s *storageSelection) findSRs(ctx context.Context, xoaClient xoa.Client) er
 			return err
 		}
 		if len(srs) == 0 {
-			// TODO: find out what the right way to deal with this is.
-			return fmt.Errorf("no SRs found with tag %s", *s.SRsWithTag)
+			return fmt.Errorf("%w: no SRs found with tag %s", ErrNoSRFound, *s.SRsWithTag)
 		}
 		s.SRs = srs
 		s.SharedSR = srs[0].Shared
@@ -211,7 +210,52 @@ func (s *storageSelection) pickSRForTopology(capacity int64, req *csi.TopologyRe
 	}
 }
 
-func pickSrFromPool(srs []xoa.SR, capacity int64) (*xoa.SR, error) {
+func (s *storageSelection) needsMigration(vm *xoa.VM) (bool, error) {
+	if s.CurrentSR == nil {
+		return true, fmt.Errorf("no current SR found")
+	}
+
+	if s.isCurrentSRValidForHost(vm) {
+		return false, nil
+	}
+
+	if s.Migrating {
+		return true, nil
+	}
+
+	// Yes we do need to migrate, but migration is disabled
+	return true, fmt.Errorf("%w: current SR is not valid for host %s", ErrSRNotValidForHost, vm.Host)
+}
+
+func (s *storageSelection) isCurrentSRValidForHost(vm *xoa.VM) bool {
+	if s.CurrentSR == nil {
+		return false
+	}
+	switch s.CurrentSR.Shared {
+	case true:
+		return s.CurrentSR.Pool == vm.Pool
+	case false:
+		return s.CurrentSR.Host == vm.Host
+	}
+	return false
+}
+
+func (s *storageSelection) pickSRForHost(host string, capacity int64) (*xoa.SR, error) {
+	filteredSrs := filterSrsForHost(s.SRs, host)
+	return pickSRWithMostSpace(filteredSrs, capacity)
+}
+
+func filterSrsForHost(srs []xoa.SR, host string) []xoa.SR {
+	filteredSrs := make([]xoa.SR, 0)
+	for _, sr := range srs {
+		if sr.Host == host {
+			filteredSrs = append(filteredSrs, sr)
+		}
+	}
+	return filteredSrs
+}
+
+func pickSRWithMostSpace(srs []xoa.SR, capacity int64) (*xoa.SR, error) {
 	if len(srs) == 0 {
 		return nil, ErrNoSRFound
 	}
@@ -231,62 +275,22 @@ func pickSrFromPool(srs []xoa.SR, capacity int64) (*xoa.SR, error) {
 	return &bestSR, nil
 }
 
-func (s *storageSelection) needsMigration(vm *xoa.VM) (bool, error) {
-	if s.CurrentSR == nil {
-		return true, fmt.Errorf("no current SR found")
-	}
-
-	if s.isCurrentSRValidForHost(vm) {
-		return false, nil
-	}
-
-	if s.Migrating {
-		return true, nil
-	}
-
-	return true, fmt.Errorf("%w: current SR is not valid for host %s", ErrSRNotValidForHost, vm.Host)
-}
-
-func (s *storageSelection) isCurrentSRValidForHost(vm *xoa.VM) bool {
-	if s.CurrentSR == nil {
-		return false
-	}
-	switch s.CurrentSR.Shared {
-	case true:
-		return s.CurrentSR.Pool == vm.Pool
-	case false:
-		return s.CurrentSR.Host == vm.Host
-	}
-	return false
-}
-
-func (s *storageSelection) pickSRForHost(host string, capacity int64) (*xoa.SR, error) {
-	filteredSrs := filterSrsForHost(s.SRs, host)
-	return pickSrFromPool(filteredSrs, capacity)
-}
-
-func filterSrsForHost(srs []xoa.SR, host string) []xoa.SR {
-	filteredSrs := make([]xoa.SR, 0)
-	for _, sr := range srs {
-		if sr.Host == host {
-			filteredSrs = append(filteredSrs, sr)
-		}
-	}
-	return filteredSrs
-}
-
 func filterSrsByTopology(srs []xoa.SR, topologies []*csi.Topology, scope SRFilterScope) []xoa.SR {
 	var filteredSrs []xoa.SR
 	for _, topology := range topologies {
 		for _, sr := range srs {
-			if scope == SRFilterScopeHost {
+			switch scope {
+			case SRFilterScopeHost:
 				if sr.Host == topology.Segments["host"] && sr.Pool == topology.Segments["pool"] {
 					filteredSrs = append(filteredSrs, sr)
 				}
-			} else if scope == SRFilterScopePool {
+			case SRFilterScopePool:
 				if sr.Pool == topology.Segments["pool"] {
 					filteredSrs = append(filteredSrs, sr)
 				}
+			case SRFilterScopeGlobal:
+				// Global scope is not filtered by topology
+				filteredSrs = append(filteredSrs, sr)
 			}
 		}
 	}
@@ -299,7 +303,7 @@ func pickSR(srs []xoa.SR, capacity int64, accessibilityRequirements *csi.Topolog
 	if accessibilityRequirements != nil {
 		var bestError = ErrNoSRFound
 		filteredPreferredSrs = filterSrsByTopology(srs, accessibilityRequirements.Preferred, scope)
-		bestSR, err := pickSrFromPool(filteredPreferredSrs, capacity)
+		bestSR, err := pickSRWithMostSpace(filteredPreferredSrs, capacity)
 		if errors.Is(err, ErrNoSRFound) {
 			// continue
 		} else if errors.Is(err, ErrNoSpace) {
@@ -309,7 +313,7 @@ func pickSR(srs []xoa.SR, capacity int64, accessibilityRequirements *csi.Topolog
 		}
 
 		filteredRequisiteSrs := filterSrsByTopology(srs, accessibilityRequirements.Requisite, scope)
-		bestSR, err = pickSrFromPool(filteredRequisiteSrs, capacity)
+		bestSR, err = pickSRWithMostSpace(filteredRequisiteSrs, capacity)
 		if errors.Is(err, ErrNoSRFound) {
 			// continue
 		} else if errors.Is(err, ErrNoSpace) {
@@ -321,7 +325,7 @@ func pickSR(srs []xoa.SR, capacity int64, accessibilityRequirements *csi.Topolog
 	}
 
 	// Now, let's pick the best SR from the pool based on left over space
-	return pickSrFromPool(srs, capacity)
+	return pickSRWithMostSpace(srs, capacity)
 }
 
 func (s *storageSelection) getTopologyForVDI(vdi *xoa.VDI) ([]*csi.Topology, error) {
@@ -334,8 +338,7 @@ func (s *storageSelection) getTopologyForVDI(vdi *xoa.VDI) ([]*csi.Topology, err
 	}
 
 	if foundSR == nil {
-		// TODO: Consequences?
-		return nil, fmt.Errorf("SR with UUID %s not found", vdi.SR)
+		return nil, fmt.Errorf("%w: SR with UUID %s not found", ErrNoSRFound, vdi.SR)
 	}
 
 	switch s.getScope() {
