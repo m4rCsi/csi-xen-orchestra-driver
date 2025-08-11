@@ -565,10 +565,11 @@ func (c *jsonRPCClient) ConnectVBDAndWaitForDevice(ctx context.Context, vbdUUID 
 			}
 
 			if vbd.Attached && vbd.Device != "" {
+				klog.V(4).Infof("VBD %s is attached to device %s", vbdUUID, vbd.Device)
 				return vbd, nil
 			}
 
-			klog.V(4).Infof("VBD not yet created, continuing to poll...")
+			klog.V(5).Infof("VBD %s not yet created, continuing to poll...", vbdUUID)
 		}
 	}
 }

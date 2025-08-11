@@ -99,7 +99,7 @@ If your environment has slow disk creation in Xen Orchestra, increase the CSI si
 - Provisioning path: the `csi-provisioner` container flag `--timeout` controls the gRPC call timeout to the driver.
 
 
-In `deploy/kustomize/base/controller-deployment.yaml`, the defaults are set to `120s`. You can override them in your overlay. Example Kustomize strategic merge patch:
+In `deploy/kustomize/base/controller-deployment.yaml`, the defaults are set to `300s`. You can override them in your overlay. Example Kustomize strategic merge patch:
 
 ```yaml
 apiVersion: apps/v1
