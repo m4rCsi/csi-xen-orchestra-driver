@@ -176,7 +176,11 @@ func (d *Driver) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to listen: %v", err)
 	}
-	defer grpcListener.Close()
+	defer func() {
+		if err := grpcListener.Close(); err != nil {
+			klog.Errorf("failed to close grpc listener: %v", err)
+		}
+	}()
 
 	// Start server
 	klog.InfoS("Starting CSI driver server", "endpoint", d.options.Endpoint)

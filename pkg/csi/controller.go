@@ -645,7 +645,7 @@ func (cs *ControllerService) findDisk(ctx context.Context, volumeID string) (*xo
 		return nil, nil, status.Errorf(codes.Internal, "failed to get migration data from VDI description: %v", err)
 	}
 
-	var storageInfo *StorageInfo = nil
+	var storageInfo *StorageInfo
 	switch m := metadata.(type) {
 	case *StorageInfo:
 		if yes, targetSRUUID := m.HasOngoingMigration(); yes {

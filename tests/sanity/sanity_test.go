@@ -53,10 +53,10 @@ func setupLogging() {
 	// https://github.com/kubernetes/klog/issues/87#issuecomment-1671820147
 	flags := &flag.FlagSet{}
 	klog.InitFlags(flags)
-	flags.Set("logtostderr", "false")
-	flags.Set("alsologtostderr", "false")
-	flags.Set("stderrthreshold", "4")
-	flags.Set("v", "4")
+	_ = flags.Set("logtostderr", "false")
+	_ = flags.Set("alsologtostderr", "false")
+	_ = flags.Set("stderrthreshold", "4")
+	_ = flags.Set("v", "4")
 
 	// Send klog output to GinkgoWriter
 	klog.SetOutput(GinkgoWriter)
@@ -101,9 +101,9 @@ func setup() {
 }
 
 func cleanup() {
-	fakeClient.Close()
+	_ = fakeClient.Close()
 	driver.Stop()
-	os.RemoveAll(tmpDirectory)
+	_ = os.RemoveAll(tmpDirectory)
 }
 
 func TestSanity(t *testing.T) {

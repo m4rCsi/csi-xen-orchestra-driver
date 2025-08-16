@@ -130,7 +130,7 @@ func (c *jsonRPCClient) Connect(ctx context.Context) error {
 
 	// Authenticate the session
 	if err := c.authenticate(ctx); err != nil {
-		c.Close() // Ensure connection is closed on auth failure
+		_ = c.Close() // Ensure connection is closed on auth failure
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 

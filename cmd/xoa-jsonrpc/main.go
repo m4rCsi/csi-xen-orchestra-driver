@@ -94,7 +94,7 @@ func main() {
 	if err := client.Connect(context.Background()); err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 	}
-	defer client.Close()
+	defer client.Close() //nolint:errcheck
 
 	// Execute the requested command
 	switch *command {

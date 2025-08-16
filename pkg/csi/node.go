@@ -186,7 +186,10 @@ func (ns *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePubli
 	}
 
 	// TODO: Check what permissions are needed for the target path
-	os.MkdirAll(target, 0755)
+	err := os.MkdirAll(target, 0755)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to ensure target path: %v", err)
+	}
 
 	if err := ns.mounter.Mount(source, target, fsType, []string{"bind"}); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to mount device: %v", err)
