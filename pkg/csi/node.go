@@ -22,7 +22,6 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/klog/v2"
 )
 
 type NodeService struct {
@@ -41,7 +40,7 @@ func NewNodeService(driver *Driver, mounter Mounter, nodeMetadata NodeMetadataGe
 }
 
 func (ns *NodeService) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
-	klog.V(2).InfoS("NodeStageVolume: called with args", "req", req)
+	log, _ := LogAndExpandContext(ctx, "req", req)
 
 	if req.VolumeId == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "volume id is required")
@@ -89,14 +88,14 @@ func (ns *NodeService) NodeStageVolume(ctx context.Context, req *csi.NodeStageVo
 		return nil, status.Error(codes.Internal, msg)
 	}
 
-	klog.V(4).InfoS("NodeStageVolume: checking if volume is already staged", "device", device, "currentDevice", currentDevice, "target", target)
+	log.V(4).Info("NodeStageVolume: checking if volume is already staged", "device", device, "currentDevice", currentDevice, "target", target)
 	if currentDevice == device {
-		klog.V(2).InfoS("NodeStageVolume: volume already staged", "device", device, "target", target)
+		log.V(2).Info("NodeStageVolume: volume already staged", "device", device, "target", target)
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
 	// Format device if needed
-	klog.V(2).InfoS("Formatting and mounting device", "devicePath", devicePath, "target", target, "fsType", fsType)
+	log.V(2).Info("Formatting and mounting device", "devicePath", devicePath, "target", target, "fsType", fsType)
 	if err := ns.mounter.FormatAndMount(devicePath, target, fsType, []string{}); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to ensure filesystem: %v", err)
 	}
@@ -110,15 +109,15 @@ func (ns *NodeService) NodeStageVolume(ctx context.Context, req *csi.NodeStageVo
 		return nil, status.Errorf(codes.Internal, "failed to resize volume: %v", err)
 	}
 	if resized {
-		klog.V(2).InfoS("Volume resized", "devicePath", devicePath, "target", target)
+		log.V(2).Info("Volume resized", "devicePath", devicePath, "target", target)
 	}
 
-	klog.V(2).InfoS("NodeStageVolume: successfully staged volume", "devicePath", devicePath, "target", target, "fstype", fsType)
+	log.V(2).Info("NodeStageVolume: successfully staged volume", "devicePath", devicePath, "target", target, "fstype", fsType)
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
 func (ns *NodeService) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
-	klog.V(2).InfoS("NodeUnstageVolume: called with args", "req", req)
+	log, _ := LogAndExpandContext(ctx, "req", req)
 
 	if req.VolumeId == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "volume id is required")
@@ -136,12 +135,12 @@ func (ns *NodeService) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnsta
 	}
 
 	if refCount == 0 {
-		klog.V(2).InfoS("NodeUnstageVolume: target not mounted", "target", target)
+		log.V(2).Info("NodeUnstageVolume: target not mounted", "target", target)
 		return &csi.NodeUnstageVolumeResponse{}, nil
 	}
 
 	if refCount > 1 {
-		klog.InfoS("NodeUnstageVolume: found references to device mounted at target path", "refCount", refCount, "device", device, "target", target)
+		log.Info("NodeUnstageVolume: found references to device mounted at target path", "refCount", refCount, "device", device, "target", target)
 	}
 
 	err = ns.mounter.Unmount(target)
@@ -153,8 +152,6 @@ func (ns *NodeService) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnsta
 }
 
 func (ns *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
-	klog.V(2).InfoS("NodePublishVolume: called with args", "req", req)
-
 	if req.VolumeId == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "volume id is required")
 	}
@@ -198,8 +195,6 @@ func (ns *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePubli
 }
 
 func (ns *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
-	klog.V(2).InfoS("NodeUnpublishVolume: called with args", "req", req)
-
 	if req.GetTargetPath() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "target path is required")
 	}
@@ -213,8 +208,6 @@ func (ns *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnp
 }
 
 func (ns *NodeService) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	klog.V(2).InfoS("NodeGetInfo: called with args", "req", req)
-
 	nodeMetadata, err := ns.nodeMetadata.GetNodeMetadata()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get node id: %v", err)
@@ -238,8 +231,6 @@ func (ns *NodeService) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequ
 }
 
 func (ns *NodeService) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
-	klog.V(2).InfoS("NodeGetCapabilities: called with args", "req", req)
-
 	return &csi.NodeGetCapabilitiesResponse{
 		Capabilities: []*csi.NodeServiceCapability{
 			{
