@@ -1,6 +1,7 @@
-IMAGE_NAME := ghcr.io/m4rcsi/csi-xen-orchestra-driver
+# IMAGE_NAME := ghcr.io/m4rcsi/csi-xen-orchestra-driver
+IMAGE_NAME := registry.marcsi.ch/homelab/csi-xen-orchestra-driver
 IMAGE_TAG := dev
-OVERLAY_DIR := deploy/kustomize/overlays/dev
+OVERLAY_DIR := deploy/kustomize/overlays/dev-local
 
 .PHONY: build
 build:
@@ -36,3 +37,7 @@ test:
 .PHONY: addlicense
 addlicense:
 	addlicense -c "Marc Siegenthaler" -l apache -ignore '**/*.yaml' -ignore '**/*.md' -ignore '**/*.json' cmd pkg tests
+
+.PHONE: lint
+lint:
+	golangci-lint run
