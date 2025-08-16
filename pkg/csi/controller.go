@@ -56,8 +56,6 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 
 	storageParams, err := LoadStorageParameters(req.GetParameters())
 	if errors.Is(err, ErrInvalidStorageParameters) {
-		// TODO: find out what the right way to deal with this is.
-		// Should this be an error (i.e. if the parameters are invalid, or should we degrade gracefully?)
 		return nil, status.Errorf(codes.InvalidArgument, "invalid storage parameters: %v", err)
 	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to load storage parameters: %v", err)
@@ -565,12 +563,10 @@ func (cs *ControllerService) createDisk(ctx context.Context, storageSelection *s
 		// volume does not exist
 		// continue with creation
 	} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
-		// TODO: Improvement: just pick up the first one and continue
-		err = cs.cleanupAllDisks(ctx, temporaryDiskName)
+		foundTemporaryVDI, err = cs.getOneDiskAndDeleteRest(ctx, temporaryDiskName)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "multiple disks found with same name, but failed to cleanup temporary disks: %v", err)
+			return nil, status.Errorf(codes.Internal, "failed to get one disk and delete rest: %v", err)
 		}
-		return nil, status.Errorf(codes.Unavailable, "multiple disks found with same name, but failed to cleanup temporary disks")
 	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
 	}
@@ -776,20 +772,28 @@ func (cs *ControllerService) migrateVDI(ctx context.Context, vdi *xoa.VDI, vm *x
 	return foundVdi, pickedSR, nil
 }
 
-func (cs *ControllerService) cleanupAllDisks(ctx context.Context, name string) error {
+func (cs *ControllerService) getOneDiskAndDeleteRest(ctx context.Context, name string) (*xoa.VDI, error) {
+	log, ctx := LogAndExpandContext(ctx, "action", "getOneDiskAndDeleteRest", "name", name)
 	vdis, err := cs.xoaClient.GetVDIs(ctx, map[string]any{
 		"name_label": name,
 	})
 	if err != nil {
-		return status.Errorf(codes.Internal, "failed to get disks: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to get disks: %v", err)
 	}
 
-	for _, vdi := range vdis {
+	if len(vdis) == 0 {
+		return nil, status.Errorf(codes.NotFound, "no disks found with name: %s", name)
+	}
+
+	selectedVdi := &vdis[0]
+
+	for _, vdi := range vdis[1:] {
 		err = cs.xoaClient.DeleteVDI(ctx, vdi.UUID)
 		if err != nil {
-			return status.Errorf(codes.Internal, "failed to delete disk: %v", err)
+			// Temporary disks will be cleaned up by the temp cleanup process anyway
+			log.Error(err, "failed to delete disk")
 		}
 	}
 
-	return nil
+	return selectedVdi, nil
 }

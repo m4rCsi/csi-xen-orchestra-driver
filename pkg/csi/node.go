@@ -16,6 +16,7 @@ package csi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -182,9 +183,8 @@ func (ns *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePubli
 		fsType = DefaultFsType
 	}
 
-	// TODO: Check what permissions are needed for the target path
 	err := os.MkdirAll(target, 0755)
-	if err != nil {
+	if err != nil && !errors.Is(err, os.ErrExist) {
 		return nil, status.Errorf(codes.Internal, "failed to ensure target path: %v", err)
 	}
 
