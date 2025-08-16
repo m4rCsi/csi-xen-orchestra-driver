@@ -1,7 +1,6 @@
-# IMAGE_NAME := ghcr.io/m4rcsi/csi-xen-orchestra-driver
-IMAGE_NAME := registry.marcsi.ch/homelab/csi-xen-orchestra-driver
+IMAGE_NAME := ghcr.io/m4rcsi/csi-xen-orchestra-driver
 IMAGE_TAG := dev
-OVERLAY_DIR := deploy/kustomize/overlays/dev-local
+OVERLAY_DIR := deploy/kustomize/overlays/dev
 
 .PHONY: build
 build:
