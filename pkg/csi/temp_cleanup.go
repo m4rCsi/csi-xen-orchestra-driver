@@ -54,7 +54,7 @@ func NewTempCleanup(xoaClient xoa.Client, diskNameGenerator *DiskNameGenerator, 
 	}
 }
 
-func (t *TempCleanup) Run() error {
+func (t *TempCleanup) Run() {
 	// Run cleanup every 5 minutes
 	t.timer = time.NewTicker(TempCleanupInterval)
 	defer t.timer.Stop()
@@ -67,7 +67,7 @@ func (t *TempCleanup) Run() error {
 			t.cleanup(ctx)
 		case <-t.ctx.Done():
 			// Context was cancelled, exit gracefully
-			return nil
+			return
 		}
 	}
 }

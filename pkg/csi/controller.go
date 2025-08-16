@@ -22,7 +22,6 @@ import (
 	xoa "github.com/m4rCsi/csi-xen-orchestra-driver/pkg/xoa"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 )
 
@@ -44,8 +43,7 @@ func NewControllerService(driver *Driver, xoaClient xoa.Client, diskNameGenerato
 }
 
 func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	klog.V(2).InfoS("CreateVolume: called with args", "req", req)
-
+	_, ctx = LogAndExpandContext(ctx, "req", req)
 	volumeName := req.GetName()
 
 	if volumeName == "" {
@@ -58,8 +56,6 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 
 	storageParams, err := LoadStorageParameters(req.GetParameters())
 	if errors.Is(err, ErrInvalidStorageParameters) {
-		// TODO: find out what the right way to deal with this is.
-		// Should this be an error (i.e. if the parameters are invalid, or should we degrade gracefully?)
 		return nil, status.Errorf(codes.InvalidArgument, "invalid storage parameters: %v", err)
 	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to load storage parameters: %v", err)
@@ -155,7 +151,7 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 }
 
 func (cs *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
-	klog.V(2).InfoS("DeleteVolume: called with args", "req", req)
+	_, ctx = LogAndExpandContext(ctx, "req", req)
 
 	vidType, volumeIDValue, err := ParseVolumeID(req.GetVolumeId())
 	if err != nil {
@@ -208,7 +204,7 @@ func (cs *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVo
 }
 
 func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
-	klog.V(2).InfoS("ControllerPublishVolume: called with args", "req", req)
+	log, ctx := LogAndExpandContext(ctx, "req", req)
 
 	vmUUID := req.GetNodeId()
 	if vmUUID == "" {
@@ -252,7 +248,7 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 		return nil, status.Errorf(codes.Internal, "failed to find SRs: %v", err)
 	}
 
-	klog.Infof("VDI %s is not attached to VM %s", vdi.UUID, vmUUID)
+	log.Info("VDI is not attached to VM", "vdiUUID", vdi.UUID, "vmUUID", vmUUID)
 
 	needsMigration, err := storageSelection.needsMigration(vm)
 	if errors.Is(err, ErrSRNotValidForHost) {
@@ -291,7 +287,7 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 }
 
 func (cs *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
-	klog.V(2).InfoS("ControllerUnpublishVolume: called with args", "req", req)
+	log, ctx := LogAndExpandContext(ctx, "req", req)
 
 	vidType, volumeIDValue, err := ParseVolumeID(req.GetVolumeId())
 	if err != nil {
@@ -329,7 +325,7 @@ func (cs *ControllerService) ControllerUnpublishVolume(ctx context.Context, req 
 	}
 
 	for _, vbd := range vbds {
-		klog.V(2).InfoS("Deleting VBD", "vbd", vbd)
+		log.V(2).Info("Deleting VBD", "vbd", vbd)
 		err := cs.xoaClient.DeleteVBD(ctx, vbd.UUID)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to delete VBD: %v", err)
@@ -339,8 +335,6 @@ func (cs *ControllerService) ControllerUnpublishVolume(ctx context.Context, req 
 }
 
 func (cs *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
-	klog.V(2).InfoS("ValidateVolumeCapabilities: called with args", "req", req)
-
 	vidType, volumeIDValue, err := ParseVolumeID(req.GetVolumeId())
 	if err != nil {
 		return nil, err
@@ -385,7 +379,7 @@ func (cs *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req
 }
 
 func (cs *ControllerService) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-	klog.V(2).InfoS("ControllerExpandVolume: called with args", "req", req)
+	_, ctx = LogAndExpandContext(ctx, "req", req)
 
 	vidType, volumeIDValue, err := ParseVolumeID(req.GetVolumeId())
 	if err != nil {
@@ -458,7 +452,7 @@ func (cs *ControllerService) ControllerExpandVolume(ctx context.Context, req *cs
 }
 
 func (cs *ControllerService) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
-	klog.V(2).InfoS("ControllerGetVolume: called with args", "req", req)
+	_, ctx = LogAndExpandContext(ctx, "req", req)
 
 	vidType, volumeIDValue, err := ParseVolumeID(req.GetVolumeId())
 	if err != nil {
@@ -514,8 +508,6 @@ func (cs *ControllerService) ControllerGetVolume(ctx context.Context, req *csi.C
 }
 
 func (cs *ControllerService) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
-	klog.V(2).InfoS("ControllerGetCapabilities: called with args", "req", req)
-
 	return &csi.ControllerGetCapabilitiesResponse{
 		Capabilities: []*csi.ControllerServiceCapability{
 			{
@@ -556,6 +548,8 @@ func (cs *ControllerService) ControllerGetCapabilities(ctx context.Context, req 
 // If this is the case, a new creation disk will be started, and we don't have a good way to know if there is one already underway.
 // With this prefix, we will be able to see if there are any temporary disks and remove them.
 func (cs *ControllerService) createDisk(ctx context.Context, storageSelection *storageSelection, volumeName string, capacity int64, topologyRequirement *csi.TopologyRequirement) (*xoa.VDI, error) {
+	log, ctx := LogAndExpandContext(ctx, "action", "createDisk", "volumeName", volumeName, "capacity", capacity)
+
 	cs.creationLock.CreationLock()
 	defer cs.creationLock.CreationUnlock()
 
@@ -569,12 +563,10 @@ func (cs *ControllerService) createDisk(ctx context.Context, storageSelection *s
 		// volume does not exist
 		// continue with creation
 	} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
-		// TODO: Improvement: just pick up the first one and continue
-		err = cs.cleanupAllDisks(ctx, temporaryDiskName)
+		foundTemporaryVDI, err = cs.getOneDiskAndDeleteRest(ctx, temporaryDiskName)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "multiple disks found with same name, but failed to cleanup temporary disks: %v", err)
+			return nil, status.Errorf(codes.Internal, "failed to get one disk and delete rest: %v", err)
 		}
-		return nil, status.Errorf(codes.Unavailable, "multiple disks found with same name, but failed to cleanup temporary disks")
 	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
 	}
@@ -590,7 +582,7 @@ func (cs *ControllerService) createDisk(ctx context.Context, storageSelection *s
 			return nil, status.Errorf(codes.Internal, "failed to create disk: %v", err)
 		}
 		vdiUUID = vdicreatedUUID
-		klog.Infof("Successfully created disk '%s' with UUID: %s", temporaryDiskName, vdiUUID)
+		log.Info("Successfully created disk", "diskName", temporaryDiskName, "vdiUUID", vdiUUID)
 	} else {
 		vdiUUID = foundTemporaryVDI.UUID
 	}
@@ -608,6 +600,8 @@ func (cs *ControllerService) createDisk(ctx context.Context, storageSelection *s
 }
 
 func (cs *ControllerService) findDisk(ctx context.Context, volumeID string) (*xoa.VDI, *StorageInfo, error) {
+	log, ctx := LogAndExpandContext(ctx, "action", "findDisk", "volumeID", volumeID)
+
 	vidType, volumeIDValue, err := ParseVolumeID(volumeID)
 	if err != nil {
 		return nil, nil, err
@@ -647,7 +641,7 @@ func (cs *ControllerService) findDisk(ctx context.Context, volumeID string) (*xo
 		return nil, nil, status.Errorf(codes.Internal, "failed to get migration data from VDI description: %v", err)
 	}
 
-	var storageInfo *StorageInfo = nil
+	var storageInfo *StorageInfo
 	switch m := metadata.(type) {
 	case *StorageInfo:
 		if yes, targetSRUUID := m.HasOngoingMigration(); yes {
@@ -663,7 +657,7 @@ func (cs *ControllerService) findDisk(ctx context.Context, volumeID string) (*xo
 			if err != nil {
 				return nil, nil, status.Errorf(codes.Internal, "failed to set VDI description: %v", err)
 			}
-			klog.Infof("VDI %s finished migration to %s", vdi.UUID, targetSRUUID)
+			log.Info("VDI finished migration", "vdiUUID", vdi.UUID, "targetSRUUID", targetSRUUID)
 		}
 		storageInfo = m
 	case *DeletionCandidate:
@@ -689,6 +683,8 @@ func publishContextFromVBD(vbd *xoa.VBD) map[string]string {
 
 func (cs *ControllerService) checkDiskAttachment(ctx context.Context, vdi *xoa.VDI, vm *xoa.VM) (*xoa.VBD, error) {
 	// Check if the VDI is already attached to the VM
+	log, ctx := LogAndExpandContext(ctx, "action", "checkDiskAttachment", "vdiUUID", vdi.UUID, "vmUUID", vm.UUID)
+
 	vbds, err := cs.xoaClient.GetVBDsByVMAndVDI(ctx, vm.UUID, vdi.UUID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get VBDs: %v", err)
@@ -713,7 +709,7 @@ func (cs *ControllerService) checkDiskAttachment(ctx context.Context, vdi *xoa.V
 			return selectedVBD, nil
 		}
 
-		klog.Infof("Connecting VBD %s", selectedVBD.UUID)
+		log.Info("Connecting VBD", "vbdUUID", selectedVBD.UUID)
 		connectedVBD, err := cs.xoaClient.ConnectVBDAndWaitForDevice(ctx, selectedVBD.UUID)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to connect VBD: %v", err)
@@ -726,6 +722,8 @@ func (cs *ControllerService) checkDiskAttachment(ctx context.Context, vdi *xoa.V
 }
 
 func (cs *ControllerService) migrateVDI(ctx context.Context, vdi *xoa.VDI, vm *xoa.VM, storageSelection *storageSelection) (*xoa.VDI, *xoa.SR, error) {
+	log, ctx := LogAndExpandContext(ctx, "action", "migrateVDI", "vdiUUID", vdi.UUID, "vmUUID", vm.UUID)
+
 	pickedSR, err := storageSelection.pickSRForHost(vm.Host, vdi.Size)
 	if err != nil {
 		return nil, nil, status.Errorf(codes.Internal, "failed to pick SR: %v", err)
@@ -743,17 +741,17 @@ func (cs *ControllerService) migrateVDI(ctx context.Context, vdi *xoa.VDI, vm *x
 	storageInfo.Migrating.StartMigration(pickedSR.UUID)
 	err = cs.xoaClient.EditVDI(ctx, vdi.UUID, nil, ptr.To(storageInfo.ToVDIDescription()))
 	if err != nil {
-		klog.Errorf("failed to set VDI description: %v", err)
+		log.Error(err, "failed to set VDI description")
 		return nil, nil, status.Errorf(codes.Internal, "failed to set VDI description: %v", err)
 	}
 
-	klog.Infof("Migrating VDI %s to SR %s", vdi.UUID, pickedSR.UUID)
+	log.Info("Migrating VDI", "vdiUUID", vdi.UUID, "targetSRUUID", pickedSR.UUID)
 	newVdiUUID, err := cs.xoaClient.MigrateVDI(ctx, vdi.UUID, pickedSR.UUID)
 	if err != nil {
-		klog.Errorf("failed to migrate VDI: %v", err)
+		log.Error(err, "failed to migrate VDI")
 		return nil, nil, status.Errorf(codes.Internal, "failed to migrate VDI: %v", err)
 	}
-	klog.Infof("VDI %s migrated to SR %s (new VDI UUID: %s)", vdi.UUID, pickedSR.UUID, newVdiUUID)
+	log.Info("VDI migrated", "vdiUUID", vdi.UUID, "targetSRUUID", pickedSR.UUID, "newVdiUUID", newVdiUUID)
 
 	foundVdi, err := cs.xoaClient.GetVDIByUUID(ctx, newVdiUUID)
 	if errors.Is(err, xoa.ErrObjectNotFound) {
@@ -766,28 +764,36 @@ func (cs *ControllerService) migrateVDI(ctx context.Context, vdi *xoa.VDI, vm *x
 	storageInfo.Migrating.EndMigration()
 	err = cs.xoaClient.EditVDI(ctx, foundVdi.UUID, nil, ptr.To(storageInfo.ToVDIDescription()))
 	if err != nil {
-		klog.Errorf("failed to set VDI description: %v", err)
+		log.Error(err, "failed to set VDI description")
 		return nil, nil, status.Errorf(codes.Internal, "failed to set VDI description: %v", err)
 	}
 
-	klog.Infof("VDI %s finished migration to %s", foundVdi.UUID, pickedSR.UUID)
+	log.Info("VDI finished migration", "vdiUUID", foundVdi.UUID, "targetSRUUID", pickedSR.UUID)
 	return foundVdi, pickedSR, nil
 }
 
-func (cs *ControllerService) cleanupAllDisks(ctx context.Context, name string) error {
+func (cs *ControllerService) getOneDiskAndDeleteRest(ctx context.Context, name string) (*xoa.VDI, error) {
+	log, ctx := LogAndExpandContext(ctx, "action", "getOneDiskAndDeleteRest", "name", name)
 	vdis, err := cs.xoaClient.GetVDIs(ctx, map[string]any{
 		"name_label": name,
 	})
 	if err != nil {
-		return status.Errorf(codes.Internal, "failed to get disks: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to get disks: %v", err)
 	}
 
-	for _, vdi := range vdis {
+	if len(vdis) == 0 {
+		return nil, status.Errorf(codes.NotFound, "no disks found with name: %s", name)
+	}
+
+	selectedVdi := &vdis[0]
+
+	for _, vdi := range vdis[1:] {
 		err = cs.xoaClient.DeleteVDI(ctx, vdi.UUID)
 		if err != nil {
-			return status.Errorf(codes.Internal, "failed to delete disk: %v", err)
+			// Temporary disks will be cleaned up by the temp cleanup process anyway
+			log.Error(err, "failed to delete disk")
 		}
 	}
 
-	return nil
+	return selectedVdi, nil
 }

@@ -81,7 +81,7 @@ func main() {
 			klog.Fatalf("failed to connect to XOA API: %v", err)
 		}
 		xoaClient = xc
-		defer xoaClient.Close()
+		defer xoaClient.Close() //nolint:errcheck
 	}
 	if mode == csi.NodeMode || mode == csi.AllMode {
 		if *nodeName == "" {

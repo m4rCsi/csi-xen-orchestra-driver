@@ -35,4 +35,8 @@ test:
 
 .PHONY: addlicense
 addlicense:
-	addlicense -c "Marc Siegenthaler" -l apache cmd pkg tests
+	addlicense -c "Marc Siegenthaler" -l apache -ignore '**/*.yaml' -ignore '**/*.md' -ignore '**/*.json' cmd pkg tests
+
+.PHONE: lint
+lint:
+	golangci-lint run
