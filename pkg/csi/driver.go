@@ -120,17 +120,21 @@ func (d *Driver) Run() error {
 		return fmt.Errorf("failed to remove unix domain socket file %s, error: %s", grpcAddr, err)
 	}
 
-	// log errors
-	errInterceptor := func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	// log errors and expand the log context
+	grpcInterceptor := func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		log := klog.FromContext(ctx).WithValues("method", info.FullMethod)
+		ctx = klog.NewContext(ctx, log)
+		log.Info(fmt.Sprintf("Method called: %s", info.FullMethod))
+
 		resp, err := handler(ctx, req)
 		if err != nil {
-			klog.ErrorS(err, "method failed", "method", info.FullMethod)
+			log.Error(err, "method failed", "method", info.FullMethod)
 		}
 		return resp, err
 	}
 
 	// Create gRPC server
-	d.server = grpc.NewServer(grpc.UnaryInterceptor(errInterceptor))
+	d.server = grpc.NewServer(grpc.UnaryInterceptor(grpcInterceptor))
 	csi.RegisterIdentityServer(d.server, d.identity)
 
 	if d.options.Mode != AllMode && d.options.Mode != ControllerMode && d.options.Mode != NodeMode {

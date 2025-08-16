@@ -92,13 +92,12 @@ func NewJSONRPCClient(config ClientConfig) (*jsonRPCClient, error) {
 		ctx:       ctx,
 		cancel:    cancel,
 	}
-
-	klog.V(4).Info("Xen Orchestra WebSocket JSON-RPC client created successfully")
 	return client, nil
 }
 
 // Connect establishes a WebSocket connection to the Xen Orchestra API
 func (c *jsonRPCClient) Connect(ctx context.Context) error {
+	log := klog.FromContext(ctx)
 	c.mu.Lock()
 
 	if c.conn != nil {
@@ -113,7 +112,7 @@ func (c *jsonRPCClient) Connect(ctx context.Context) error {
 		return fmt.Errorf("%w: failed to create WebSocket URL: %w", ErrConnectionError, err)
 	}
 
-	klog.V(4).Infof("Connecting to WebSocket: %s", wsURL)
+	log.V(4).Info("Connecting to WebSocket", "wsURL", wsURL)
 
 	// Create WebSocket connection
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
@@ -135,7 +134,7 @@ func (c *jsonRPCClient) Connect(ctx context.Context) error {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 
-	klog.V(4).Info("Successfully connected and authenticated to Xen Orchestra WebSocket API")
+	log.V(4).Info("Successfully connected and authenticated to Xen Orchestra WebSocket API")
 	return nil
 }
 
@@ -228,7 +227,8 @@ func (c *jsonRPCClient) getWebSocketURL() (string, error) {
 
 // authenticate performs authentication with the server
 func (c *jsonRPCClient) authenticate(ctx context.Context) error {
-	klog.V(4).Info("Authenticating session with token...")
+	log := klog.FromContext(ctx)
+	log.V(4).Info("Authenticating session with token...")
 	_, err := c.call(ctx, "session.signInWithToken", map[string]any{
 		"token": c.token,
 	})
@@ -236,7 +236,7 @@ func (c *jsonRPCClient) authenticate(ctx context.Context) error {
 		return fmt.Errorf("session.signInWithToken failed: %w", err)
 	}
 
-	klog.V(4).Info("Session successfully authenticated")
+	log.V(4).Info("Session successfully authenticated")
 	return nil
 }
 
@@ -387,6 +387,8 @@ func (c *jsonRPCClient) GetVDIByUUID(ctx context.Context, uuid string) (*VDI, er
 }
 
 func (c *jsonRPCClient) EditVDI(ctx context.Context, uuid string, name, description *string) error {
+	log := klog.FromContext(ctx)
+
 	params := map[string]any{
 		"id": uuid,
 	}
@@ -399,14 +401,14 @@ func (c *jsonRPCClient) EditVDI(ctx context.Context, uuid string, name, descript
 		params["name_label"] = *name
 	}
 
-	klog.V(4).Infof("Editing VDI %s: %v", uuid, params)
+	log.V(4).Info("Editing VDI", "uuid", uuid, "params", params)
 
 	result, err := c.call(ctx, "vdi.set", params)
 	if err != nil {
 		return fmt.Errorf("failed to set VDI description: %w", err)
 	}
 
-	klog.V(4).Infof("Set VDI %s description: %s", uuid, string(result))
+	log.V(4).Info("Set VDI description", "uuid", uuid, "result", string(result))
 	return nil
 }
 
@@ -486,6 +488,8 @@ func (c *jsonRPCClient) CreateVDI(ctx context.Context, nameLabel, srUUID string,
 }
 
 func (c *jsonRPCClient) ResizeVDI(ctx context.Context, uuid string, size int64) error {
+	log := klog.FromContext(ctx)
+
 	result, err := c.call(ctx, "vdi.set", map[string]any{
 		"id":   uuid,
 		"size": size,
@@ -495,12 +499,14 @@ func (c *jsonRPCClient) ResizeVDI(ctx context.Context, uuid string, size int64) 
 		return fmt.Errorf("failed to resize VDI: %w", err)
 	}
 
-	klog.V(4).Infof("Resized VDI %s: %s", uuid, string(result))
+	log.V(4).Info("Resized VDI", "uuid", uuid, "result", string(result))
 	return nil
 }
 
 // DeleteVDI deletes a virtual disk image
 func (c *jsonRPCClient) DeleteVDI(ctx context.Context, uuid string) error {
+	log := klog.FromContext(ctx)
+
 	resp, err := c.call(ctx, "vdi.delete", map[string]any{
 		"id": uuid,
 	})
@@ -508,7 +514,16 @@ func (c *jsonRPCClient) DeleteVDI(ctx context.Context, uuid string) error {
 		return fmt.Errorf("failed to delete VDI %s: %w", uuid, err)
 	}
 
-	klog.V(4).Infof("Deleted VDI %s: %s", uuid, string(resp))
+	var ok bool
+	if err := json.Unmarshal(resp, &ok); err != nil {
+		return fmt.Errorf("%w: failed to unmarshal delete VDI response: %w", ErrUnmarshalError, err)
+	}
+
+	if !ok {
+		return fmt.Errorf("failed to delete VDI %s", uuid)
+	}
+
+	log.V(4).Info("Deleted VDI", "uuid", uuid)
 	return nil
 }
 
@@ -532,6 +547,8 @@ func (c *jsonRPCClient) AttachVDI(ctx context.Context, vmUUID, vdiUUID string, m
 }
 
 func (c *jsonRPCClient) ConnectVBDAndWaitForDevice(ctx context.Context, vbdUUID string) (*VBD, error) {
+	log := klog.FromContext(ctx)
+
 	// Check if VBD is already connected
 	vbd, err := c.GetVBDByUUID(ctx, vbdUUID)
 	if err != nil {
@@ -563,11 +580,11 @@ func (c *jsonRPCClient) ConnectVBDAndWaitForDevice(ctx context.Context, vbdUUID 
 			}
 
 			if vbd.Attached && vbd.Device != "" {
-				klog.V(4).Infof("VBD %s is attached to device %s", vbdUUID, vbd.Device)
+				log.V(4).Info("VBD is attached to device", "vbdUUID", vbdUUID, "device", vbd.Device)
 				return vbd, nil
 			}
 
-			klog.V(5).Infof("VBD %s not yet created, continuing to poll...", vbdUUID)
+			log.V(5).Info("VBD not yet created, continuing to poll...", "vbdUUID", vbdUUID)
 		}
 	}
 }
@@ -671,6 +688,8 @@ func (c *jsonRPCClient) GetVBDByUUID(ctx context.Context, vbdUUID string) (*VBD,
 }
 
 func (c *jsonRPCClient) DisconnectVBD(ctx context.Context, vbdUUID string) error {
+	log := klog.FromContext(ctx)
+
 	resp, err := c.call(ctx, "vbd.disconnect", map[string]any{
 		"id": vbdUUID,
 	})
@@ -678,11 +697,13 @@ func (c *jsonRPCClient) DisconnectVBD(ctx context.Context, vbdUUID string) error
 		return fmt.Errorf("failed to disconnect VBD %s: %w", vbdUUID, err)
 	}
 
-	klog.V(4).Infof("Disconnected VBD %s: %s", vbdUUID, string(resp))
+	log.V(4).Info("Disconnected VBD", "vbdUUID", vbdUUID, "result", string(resp))
 	return nil
 }
 
 func (c *jsonRPCClient) ConnectVBD(ctx context.Context, vbdUUID string) error {
+	log := klog.FromContext(ctx)
+
 	resp, err := c.call(ctx, "vbd.connect", map[string]any{
 		"id": vbdUUID,
 	})
@@ -690,7 +711,15 @@ func (c *jsonRPCClient) ConnectVBD(ctx context.Context, vbdUUID string) error {
 		return fmt.Errorf("failed to connect VBD %s: %w", vbdUUID, err)
 	}
 
-	klog.V(4).Infof("Connected VBD %s: %s", vbdUUID, string(resp))
+	var ok bool
+	if err := json.Unmarshal(resp, &ok); err != nil {
+		return fmt.Errorf("%w: failed to unmarshal connect VBD response: %w", ErrUnmarshalError, err)
+	}
+	if !ok {
+		return fmt.Errorf("failed to connect VBD %s", vbdUUID)
+	}
+
+	log.V(4).Info("Connected VBD", "vbdUUID", vbdUUID)
 	return nil
 }
 
@@ -702,11 +731,20 @@ func (c *jsonRPCClient) DeleteVBD(ctx context.Context, vbdUUID string) error {
 		return fmt.Errorf("failed to delete VBD %s: %w", vbdUUID, err)
 	}
 
-	klog.V(4).Infof("Deleted VBD %s: %s", vbdUUID, string(resp))
+	var ok bool
+	if err := json.Unmarshal(resp, &ok); err != nil {
+		return fmt.Errorf("%w: failed to unmarshal delete VBD response: %w", ErrUnmarshalError, err)
+	}
+	if !ok {
+		return fmt.Errorf("failed to delete VBD %s", vbdUUID)
+	}
+
 	return nil
 }
 
 func (c *jsonRPCClient) MigrateVDI(ctx context.Context, vdiUUID, srUUID string) (string, error) {
+	log := klog.FromContext(ctx)
+
 	resp, err := c.call(ctx, "vdi.migrate", map[string]any{
 		"id":    vdiUUID,
 		"sr_id": srUUID,
@@ -720,7 +758,7 @@ func (c *jsonRPCClient) MigrateVDI(ctx context.Context, vdiUUID, srUUID string) 
 		return "", fmt.Errorf("%w: failed to unmarshal new VDI UUID: %w", ErrUnmarshalError, err)
 	}
 
-	klog.V(4).Infof("Migrated VDI %s to SR %s: %s", vdiUUID, srUUID, string(resp))
+	log.V(4).Info("Migrated VDI", "vdiUUID", vdiUUID, "srUUID", srUUID, "result", string(resp))
 	return newVdiUUID, nil
 }
 
