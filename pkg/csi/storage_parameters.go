@@ -35,7 +35,7 @@ type storageParameters struct {
 	// Selected Storage Repository/ies
 	SRsWithTag *string
 
-	// Allow the migration betwen SRs (with the same Tag).
+	// Allow the migration between SRs (with the same Tag).
 	// Does not make sense if SRUUID is set
 	Migrating bool
 }

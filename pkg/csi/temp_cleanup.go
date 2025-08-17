@@ -19,7 +19,6 @@ import (
 	"time"
 
 	xoa "github.com/m4rCsi/csi-xen-orchestra-driver/pkg/xoa"
-	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 )
 
@@ -91,10 +90,11 @@ func (t *TempCleanup) Stop() {
 //	When the VDI is (still) prefixed with VDIDiskPrefixTemporary and has the deletion candidate description, we delete it.
 //	This process survives a restart of the controller.
 func (t *TempCleanup) cleanup(ctx context.Context) {
-	klog.InfoS("Starting temp cleanup")
+	log, ctx := LogAndExpandContext(ctx, "action", "tempCleanup")
+	log.Info("Starting temp cleanup")
 	vdis, err := t.xoaClient.GetVDIs(ctx, nil)
 	if err != nil {
-		klog.Errorf("Failed to get VDIs: %v", err)
+		log.Error(err, "Failed to get VDIs")
 		return
 	}
 
@@ -108,11 +108,11 @@ func (t *TempCleanup) cleanup(ctx context.Context) {
 		if !t.diskNameGenerator.IsTemporaryDisk(vdi.NameLabel) {
 			continue
 		}
-		klog.InfoS("Processing temporary VDI", "vdi", vdi.NameLabel)
+		log.Info("Processing temporary VDI", "vdi", vdi.NameLabel)
 
 		metadata, err := EmbeddedVDIMetadataFromDescription(vdi.NameDescription)
 		if err != nil {
-			klog.Errorf("Failed to get VDI metadata: %v", err)
+			log.Error(err, "Failed to get VDI metadata")
 			continue
 		}
 
@@ -120,7 +120,7 @@ func (t *TempCleanup) cleanup(ctx context.Context) {
 		case *NoMetadata:
 			if val, ok := t.firstSeen[vdi.UUID]; ok {
 				if time.Since(val) > TempCleanupMarkAsDeletionCandidateAfter {
-					klog.InfoS("VDI has been observed multiple times now, marking as deletion candidate", "vdi", vdi.NameLabel)
+					log.Info("VDI has been observed multiple times now, marking as deletion candidate", "vdi", vdi.NameLabel)
 					t.setDeletionCandidate(ctx, &vdis[i])
 				}
 			} else {
@@ -128,13 +128,13 @@ func (t *TempCleanup) cleanup(ctx context.Context) {
 			}
 		case *DeletionCandidate:
 			if metadata.GetUnusedSince().Before(time.Now().Add(-1 * TempCleanupThreshold)) {
-				klog.InfoS("Deletion Candiate is old enough, deleting VDI", "vdi", vdi.NameLabel)
+				log.Info("Deletion Candidate is old enough, deleting VDI", "vdi", vdi.NameLabel)
 				err = t.xoaClient.DeleteVDI(ctx, vdi.UUID)
 				if err != nil {
-					klog.Errorf("Failed to delete VDI: %v", err)
+					log.Error(err, "Failed to delete VDI")
 				}
 			} else {
-				klog.InfoS("Deletion Candiate is not old enough, skipping", "vdi", vdi.NameLabel)
+				log.Info("Deletion Candidate is not old enough, skipping", "vdi", vdi.NameLabel)
 			}
 		case *StorageInfo:
 			// This should not be on a temporary disk. We simply ignore it.
@@ -151,30 +151,32 @@ func (t *TempCleanup) cleanup(ctx context.Context) {
 }
 
 func (t *TempCleanup) setDeletionCandidate(ctx context.Context, vdi *xoa.VDI) {
+	log, ctx := LogAndExpandContext(ctx, "action", "setDeletionCandidate", "vdi", vdi.NameLabel)
+
 	t.creationLock.DeletionLock()
 	defer t.creationLock.DeletionUnlock()
 
 	refetchedVdi, err := t.xoaClient.GetVDIByUUID(ctx, vdi.UUID)
 	if err != nil {
-		klog.Errorf("Failed to get VDI: %v", err)
+		log.Error(err, "Failed to get VDI")
 		return
 	}
 
 	if refetchedVdi.NameDescription != vdi.NameDescription {
-		klog.InfoS("VDI Description has been modified, skipping", "vdi", vdi.NameLabel)
+		log.Info("VDI Description has been modified, skipping")
 		return
 	}
 
 	if refetchedVdi.NameLabel != vdi.NameLabel {
-		klog.InfoS("VDI has been renamed, skipping", "vdi", vdi.NameLabel)
+		log.Info("VDI has been renamed, skipping")
 		return
 	}
 
-	klog.InfoS("No metadata found, setting deletion candidate", "vdi", vdi.NameLabel)
+	log.Info("No metadata found, setting deletion candidate")
 	deletionCandidate := NewDeletionCandidate(time.Now())
 	err = t.xoaClient.EditVDI(ctx, vdi.UUID, nil, ptr.To(deletionCandidate.ToVDIDescription()))
 	if err != nil {
-		klog.Errorf("Failed to set VDI description: %v", err)
+		log.Error(err, "Failed to set VDI description")
 		return
 	}
 }

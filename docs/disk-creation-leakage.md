@@ -120,7 +120,7 @@ spec:
       - name: csi-xen-orchestra-driver
         args:
         ...
-        - --timeout=600s   # increase to 10 minutes
+        - --xoa-timeout=600s   # increase to 10 minutes
         ...
  
 ```
