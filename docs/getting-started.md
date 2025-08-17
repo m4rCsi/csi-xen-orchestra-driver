@@ -17,7 +17,8 @@ kubectl create secret generic csi-xen-orchestra-credentials \
 ## Install Driver
 
 ```sh
-kubectl apply -k ./deploy/kustomize/overlays/dev/
+# From Last Release
+kubectl apply -f https://github.com/m4rCsi/csi-xen-orchestra-driver/releases/download/v0.1.0/driver.yaml
 ```
 
 See [Driver Configuration](./driver-configuration.md) for configuration options.
@@ -28,6 +29,9 @@ See [Driver Configuration](./driver-configuration.md) for configuration options.
 Tag Storage Repositories with `k8s-shared`  (or `k8s-local`).
 
 ```bash
-kubectl apply -f ./examples/sc-shared.yaml  # or ./examples/sc-local.yaml
+kubectl apply -f https://raw.githubusercontent.com/m4rCsi/csi-xen-orchestra-driver/refs/heads/main/examples/sc-shared.yaml  
+
+# or 
+kubectl apply -f https://raw.githubusercontent.com/m4rCsi/csi-xen-orchestra-driver/refs/heads/main/examples/sc-localmigrating.yaml
 ```
 

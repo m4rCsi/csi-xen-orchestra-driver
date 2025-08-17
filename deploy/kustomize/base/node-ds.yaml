@@ -44,7 +44,6 @@ spec:
         - "--controller=false"
         - "--node=true"
         - "--node-name=$(NODE_NAME)"
-        - "--v=4"
         env:
         - name: CSI_ENDPOINT
           value: unix:///csi/csi.sock

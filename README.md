@@ -25,7 +25,7 @@ Expecting much broader compatibility, but for now only tested on 1.30 (with Talo
 
 | Driver | Kubernetes |
 | --- | --- |
-| dev (main) | 1.30 (tested) |
+| v0.1.0 | 1.30 (tested) |
 
 ## Features
 - Dynamic provisioning (create disks on demand via PVCs)

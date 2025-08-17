@@ -1,3 +1,4 @@
 bin
 csi-xen-orchestra-credentials-secret.yaml
 deploy/kustomize/overlays/dev-local/
+deploy/kustomize/overlays/release/driver.yaml

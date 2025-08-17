@@ -93,7 +93,6 @@ spec:
         - "--endpoint=$(CSI_ENDPOINT)"
         - "--controller=true"
         - "--xoa-timeout=300s"
-        - "--v=4"
         env:
         - name: CSI_ENDPOINT
           value: unix:///var/lib/csi/sockets/pluginproxy/csi.socket
