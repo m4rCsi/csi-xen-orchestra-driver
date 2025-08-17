@@ -5,15 +5,6 @@ resources:
 - ../../base/
 
 images:
-- digest: sha256:3096ae91272a16cb0a15aff96135814d0a52724547efbc28e94ed9779be73697
+- digest: sha256:f5f8607309767cddb0e9a565045f507bf9ac7c33f6041a069dcd1e0689b963dc
   name: csi-xen-orchestra-driver
   newName: ghcr.io/m4rcsi/csi-xen-orchestra-driver
-
-# Set custom the disk name prefix
-# - patch: |-
-#     - op: add
-#       path: /spec/template/spec/containers/3/args/-
-#       value: "--disk-name-prefix=csistaging-"
-#   target:
-#     kind: Deployment
-#     name: csi-xen-orchestra-controller
