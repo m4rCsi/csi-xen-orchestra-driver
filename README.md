@@ -13,11 +13,11 @@ CSI Driver for Xen-orchestra-managed xcp-ng environments.
 ![Attached Disks](docs/assets/xoa-attached-disks.png)
 
 ## Requirements
-- Xen Orchestra (XO)
-- Kubernetes Cluster
-    - With [xenorchestra-cloud-controller-manager](https://github.com/vatesfr/xenorchestra-cloud-controller-manager/tree/main)
+- [Xen Orchestra (XO)](https://docs.xcp-ng.org/management/manage-at-scale/xo-web-ui/)
+- Kubernetes Cluster:
+    - with [xenorchestra-cloud-controller-manager](https://github.com/vatesfr/xenorchestra-cloud-controller-manager/tree/main)
 - Kubernetes Nodes: 
-  - `xe-guest-utils` installed
+  - with `xe-guest-utils` installed
 
 ## Compatibility
 
