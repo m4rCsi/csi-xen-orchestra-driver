@@ -1,11 +1,14 @@
-# csi-xen-orchestra-driver
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/m4rcsi/csi-xen-orchestra-driver/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/m4rcsi/csi-xen-orchestra-driver/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/m4rcsi/csi-xen-orchestra-driver)](https://goreportcard.com/badge/github.com/m4rcsi/csi-xen-orchestra-driver/)
 
-CSI Driver for Xen-orchestra-managed Xen-ng environments
+# csi-xen-orchestra-driver
 
-> ⚠️ Under active development. Not production-ready yet.
+> ⚠️ Under active development.
+
+CSI Driver for Xen-orchestra-managed xcp-ng environments.
+
 
 ![Attached Disks](docs/assets/xoa-attached-disks.png)
 
