@@ -1,5 +1,6 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![GitHub Release](https://img.shields.io/github/v/release/m4rCsi/csi-xen-orchestra-driver?sort=semver&display_name=release)]()
 [![CI](https://github.com/m4rcsi/csi-xen-orchestra-driver/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/m4rcsi/csi-xen-orchestra-driver/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/m4rcsi/csi-xen-orchestra-driver)](https://goreportcard.com/report/github.com/m4rCsi/csi-xen-orchestra-driver)
 
