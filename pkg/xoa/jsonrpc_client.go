@@ -580,16 +580,18 @@ func (c *jsonRPCClient) ConnectVBDAndWaitForDevice(ctx context.Context, vbdUUID 
 			}
 
 			if vbd.Attached && vbd.Device != "" {
-				log.V(4).Info("VBD is attached to device", "vbdUUID", vbdUUID, "device", vbd.Device)
+				log.V(4).Info("VBD is connected to device", "vbdUUID", vbdUUID, "device", vbd.Device)
 				return vbd, nil
 			}
 
-			log.V(5).Info("VBD not yet created, continuing to poll...", "vbdUUID", vbdUUID)
+			// log.V(5).Info("VBD not yet created, continuing to poll...", "vbdUUID", vbdUUID)
 		}
 	}
 }
 
 func (c *jsonRPCClient) AttachVDIAndWaitForDevice(ctx context.Context, vmUUID, vdiUUID string, mode string) (*VBD, error) {
+	log := klog.FromContext(ctx)
+
 	ok, err := c.AttachVDI(ctx, vmUUID, vdiUUID, mode)
 	if err != nil {
 		return nil, err
@@ -616,11 +618,12 @@ func (c *jsonRPCClient) AttachVDIAndWaitForDevice(ctx context.Context, vmUUID, v
 
 			for _, vbd := range vbds {
 				if vbd.Attached && vbd.Device != "" {
+					log.V(4).Info("VBD is attached to device", "vbdUUID", vbd.UUID, "device", vbd.Device)
 					return &vbd, nil
 				}
 			}
 
-			// klog.V(4).Infof("VBD not yet created, continuing to poll...")
+			// log.V(5).Info("VBD not yet created, continuing to poll...", "vmUUID", vmUUID, "vdiUUID", vdiUUID)
 		}
 	}
 }

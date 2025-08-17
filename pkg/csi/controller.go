@@ -17,6 +17,7 @@ package csi
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	xoa "github.com/m4rCsi/csi-xen-orchestra-driver/pkg/xoa"
@@ -266,7 +267,9 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 	}
 
 	// Attach the VDI to the VM in RW mode
-	vbd, err = cs.xoaClient.AttachVDIAndWaitForDevice(ctx, vm.UUID, vdi.UUID, "RW")
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	vbd, err = cs.xoaClient.AttachVDIAndWaitForDevice(ctxWithTimeout, vm.UUID, vdi.UUID, "RW")
 	if err != nil {
 		if errors.Is(err, xoa.ErrNoSuchObject) {
 			return nil, status.Errorf(codes.NotFound, "not found")
@@ -294,11 +297,6 @@ func (cs *ControllerService) ControllerUnpublishVolume(ctx context.Context, req 
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume ID: %v", err)
 	}
 
-	vmUUID := req.GetNodeId()
-	if vmUUID == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "node ID is required")
-	}
-
 	var vdiUUID string
 	switch vidType {
 	case NameAsVolumeID:
@@ -319,11 +317,22 @@ func (cs *ControllerService) ControllerUnpublishVolume(ctx context.Context, req 
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume ID type")
 	}
 
-	vbds, err := cs.xoaClient.GetVBDsByVMAndVDI(ctx, vmUUID, vdiUUID)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get VBDs: %v", err)
-	}
+	vmUUID := req.GetNodeId()
+	var vbds []xoa.VBD
+	if vmUUID == "" {
+		allvbds, err := cs.xoaClient.GetVBDsByVDI(ctx, vdiUUID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get VBDs: %v", err)
+		}
 
+		vbds = allvbds
+	} else {
+		attachedVBDs, err := cs.xoaClient.GetVBDsByVMAndVDI(ctx, vmUUID, vdiUUID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get VBDs: %v", err)
+		}
+		vbds = attachedVBDs
+	}
 	for _, vbd := range vbds {
 		log.V(2).Info("Deleting VBD", "vbd", vbd)
 		err := cs.xoaClient.DeleteVBD(ctx, vbd.UUID)
@@ -681,8 +690,11 @@ func publishContextFromVBD(vbd *xoa.VBD) map[string]string {
 	}
 }
 
+// checkDiskAttachment: Check if the VDI is already attached to the VM
+// If it is, return the VBD
+// If it is not, connect the VBD and return the VBD
+// If the VBD is not attached after 10 seconds, return an error
 func (cs *ControllerService) checkDiskAttachment(ctx context.Context, vdi *xoa.VDI, vm *xoa.VM) (*xoa.VBD, error) {
-	// Check if the VDI is already attached to the VM
 	log, ctx := LogAndExpandContext(ctx, "action", "checkDiskAttachment", "vdiUUID", vdi.UUID, "vmUUID", vm.UUID)
 
 	vbds, err := cs.xoaClient.GetVBDsByVMAndVDI(ctx, vm.UUID, vdi.UUID)
@@ -710,7 +722,9 @@ func (cs *ControllerService) checkDiskAttachment(ctx context.Context, vdi *xoa.V
 		}
 
 		log.Info("Connecting VBD", "vbdUUID", selectedVBD.UUID)
-		connectedVBD, err := cs.xoaClient.ConnectVBDAndWaitForDevice(ctx, selectedVBD.UUID)
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		connectedVBD, err := cs.xoaClient.ConnectVBDAndWaitForDevice(ctxWithTimeout, selectedVBD.UUID)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to connect VBD: %v", err)
 		}
