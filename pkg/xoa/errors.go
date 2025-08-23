@@ -17,6 +17,7 @@ package xoa
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 var (
@@ -38,6 +39,15 @@ var (
 func ConvertJSONRPCError(apiErr *jsonRPCError) error {
 	if specificErr, exists := errorCodeMap[apiErr.Code]; exists {
 		return fmt.Errorf("%w: %s", specificErr, apiErr.Message)
+	}
+
+	// -32000 is the code for unknown errors
+	if apiErr.Code == -32000 {
+		if stringcode, _, ok := strings.Cut(apiErr.Message, "("); ok {
+			if specificErr, exists := unknownErrorStringCodeMap[stringcode]; exists {
+				return fmt.Errorf("%w: %s", specificErr, apiErr.Message)
+			}
+		}
 	}
 
 	// For unknown error codes, return a generic unknown error
@@ -81,6 +91,12 @@ var (
 	ErrNotEnoughResources  = errors.New("not enough resources in resource set")
 	ErrIncorrectState      = errors.New("incorrect state")
 	ErrFeatureUnauthorized = errors.New("feature unauthorized")
+
+	// "Unknown" Errors
+	// These errors don't have a code, but we can try and detect them by the message
+	ErrOtherOperationInProgress = errors.New("other operation in progress")
+	ErrOperationNotAllowed      = errors.New("operation not allowed")
+	ErrDeviceAlreadyExists      = errors.New("device already exists")
 )
 
 // errorCodeMap maps error codes to their corresponding error types
@@ -119,4 +135,10 @@ var errorCodeMap = map[int]error{
 	24: ErrNotEnoughResources,
 	25: ErrIncorrectState,
 	26: ErrFeatureUnauthorized,
+}
+
+var unknownErrorStringCodeMap = map[string]error{
+	"OTHER_OPERATION_IN_PROGRESS": ErrOtherOperationInProgress,
+	"OPERATION_NOT_ALLOWED":       ErrOperationNotAllowed,
+	"DEVICE_ALREADY_EXISTS":       ErrDeviceAlreadyExists,
 }

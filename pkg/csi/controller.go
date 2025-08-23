@@ -270,10 +270,16 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	vbd, err = cs.xoaClient.AttachVDIAndWaitForDevice(ctxWithTimeout, vm.UUID, vdi.UUID, "RW")
-	if err != nil {
 		if errors.Is(err, xoa.ErrNoSuchObject) {
 			return nil, status.Errorf(codes.NotFound, "not found")
-		}
+	} else if errors.Is(err, xoa.ErrDeviceAlreadyExists) {
+		// TODO: What error code should we use here?
+		return nil, status.Errorf(codes.AlreadyExists, "device already exists: %v", err)
+	} else if errors.Is(err, xoa.ErrOtherOperationInProgress) {
+		return nil, status.Errorf(codes.Unavailable, "other operation in progress: %v", err)
+	} else if errors.Is(err, context.DeadlineExceeded) {
+		return nil, status.Errorf(codes.DeadlineExceeded, "timeout while waiting for device: %v", err)
+	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to publish disk: %v", err)
 	}
 
@@ -336,7 +342,11 @@ func (cs *ControllerService) ControllerUnpublishVolume(ctx context.Context, req 
 	for _, vbd := range vbds {
 		log.V(2).Info("Deleting VBD", "vbd", vbd)
 		err := cs.xoaClient.DeleteVBD(ctx, vbd.UUID)
-		if err != nil {
+		if errors.Is(err, xoa.ErrOtherOperationInProgress) {
+			return nil, status.Errorf(codes.Unavailable, "other operation in progress: %v", err)
+		} else if errors.Is(err, xoa.ErrOperationNotAllowed) {
+			return nil, status.Errorf(codes.FailedPrecondition, "operation not allowed: %v", err)
+		} else if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to delete VBD: %v", err)
 		}
 	}
@@ -617,7 +627,6 @@ func (cs *ControllerService) findDisk(ctx context.Context, volumeID string) (*xo
 	}
 
 	var vdi *xoa.VDI = nil
-	// var storageInfo *StorageInfo = nil
 	switch vidType {
 	case NameAsVolumeID:
 		diskName := cs.diskNameGenerator.FromVolumeName(volumeIDValue)
@@ -725,7 +734,11 @@ func (cs *ControllerService) checkDiskAttachment(ctx context.Context, vdi *xoa.V
 		ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		connectedVBD, err := cs.xoaClient.ConnectVBDAndWaitForDevice(ctxWithTimeout, selectedVBD.UUID)
-		if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, status.Errorf(codes.DeadlineExceeded, "timeout while waiting for device: %v", err)
+		} else if errors.Is(err, xoa.ErrOtherOperationInProgress) {
+			return nil, status.Errorf(codes.Unavailable, "other operation in progress: %v", err)
+		} else if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to connect VBD: %v", err)
 		}
 

@@ -1,6 +1,9 @@
 # Storage Repositories
 
-This driver can create and attach volumes in specific Xen Orchestra Storage Repositories (SRs). It works with both shared and local SRs. You select SRs through your StorageClass parameters in one of two ways:
+> [!TIP]
+> See [XCP-ng Documentation: Storage in XCP-ng](https://docs.xcp-ng.org/storage/) for details about how Storage works in XCP-ng.
+
+This driver can create and attach volumes in specific Xen Orchestra Storage Repositories (SRs). You select SRs through your StorageClass parameters in one of two ways:
 
 - Exact SR selection with `srUUID`
 - Set-based SR selection with `srsWithTag`
@@ -9,7 +12,7 @@ Both methods work with shared and with local SRs.
 
 ## Option 1: Select a single SR by UUID (`srUUID`)
 
-Use this when you want every volume of a class to reside in one specific SR (local or shared).
+Use this when you want every volume of a class to reside in one specific SR.
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -62,4 +65,3 @@ Notes:
 
 - [StorageClass options](storage-class.md)
 - [Disk migrations](disk-migrations.md)
-
