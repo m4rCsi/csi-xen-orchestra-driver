@@ -6,7 +6,8 @@
 
 # csi-xen-orchestra-driver
 
-> ⚠️ Under active development.
+> [!WARNING]
+> Under active development.
 
 CSI Driver for Xen-orchestra-managed xcp-ng environments.
 
@@ -33,7 +34,7 @@ Expecting much broader compatibility, but for now only tested on 1.30 (with Talo
 - Migration of disks between storage repositories (see: [Disk Migrations](docs/disk-migrations.md))
 - Static provisioning (use an existing VDI by UUID)
 - Offline volume expansion
-- Topology aware
+- Topology aware (pool, and optionally host)
 
 ## Documentation
 
