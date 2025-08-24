@@ -30,7 +30,7 @@ allowVolumeExpansion: true
 Notes:
 - Works for both shared and local SRs.
 - Do not set `srsWithTag` or `migrating` when `srUUID` is set.
-- For local SRs, consider `WaitForFirstConsumer` to align scheduling with where the SR is available.
+- **When using Local SRs**: Before using Local SRs read [Local Storage](local-storage.md) for details.
 
 ## Option 2: Select from a set of SRs by tag (`srsWithTag`)
 
@@ -54,14 +54,17 @@ Notes:
 - Works for both shared and local SRs.
 - Do not set `srUUID` when `srsWithTag` is used.
 - If you enable `migrating: "true"`, the driver may transparently move the disk between tagged SRs at attach time. See Disk migrations for details.
+- **When using Local SRs**: Before using Local SRs read [Local Storage](local-storage.md) for details.
 
 ## Compatibility and constraints
 
 - `srUUID` and `srsWithTag` are mutually exclusive.
 - `migrating` cannot be combined with `srUUID`; use `srsWithTag` when `migrating` is enabled.
 - All SRs under the same tag should share the same characteristic (all local or all shared).
+- Before using Local SRs read [Local Storage](local-storage.md) for details.
 
 ## Related
 
+- [Local Storage](local-storage.md) - Special considerations for local storage repositories
 - [StorageClass options](storage-class.md)
 - [Disk migrations](disk-migrations.md)

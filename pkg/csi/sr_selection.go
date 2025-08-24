@@ -45,7 +45,14 @@ const (
 	VolumeScopeGlobal VolumeScope = "global"
 )
 
+// storageSelection is a construct that holds all the information we need to select a SR for a volume.
+// it is initialized in two steps:
+// 1. storageSelectionFromParameters  or  storageSelectionFromStorageInfo (depending on the context)
+// 2. findSRs to populate the SRs and CurrentSR fields
 type storageSelection struct {
+	// Configuration
+	hostTopology bool
+
 	// Inputs
 	SRUUID               *string
 	SRsWithTag           *string
@@ -61,8 +68,11 @@ type storageSelection struct {
 	SharedSR bool
 }
 
-func storageSelectionFromParameters(parameters *storageParameters) *storageSelection {
+// storageSelectionFromParameters creates a storageSelection from the parameters passed in the StorageClass
+func storageSelectionFromParameters(parameters *storageParameters, hostTopology bool) *storageSelection {
 	sr := &storageSelection{
+		hostTopology: hostTopology,
+
 		SRUUID:     parameters.SRUUID,
 		SRsWithTag: parameters.SRsWithTag,
 		Migrating:  parameters.Migrating,
@@ -77,6 +87,9 @@ func storageSelectionFromParameters(parameters *storageParameters) *storageSelec
 	return sr
 }
 
+// VolumeIDType returns the type of volume ID to use for the volume
+// we can only use the UUID if we are not migrating and the SR is shared
+// otherwise the UUID will change when we migrate.
 func (s *storageSelection) VolumeIDType() VolumeIDType {
 	if s.Migrating {
 		return NameAsVolumeID
@@ -89,6 +102,8 @@ func (s *storageSelection) VolumeIDType() VolumeIDType {
 	return NameAsVolumeID
 }
 
+// toStorageInfo creates a StorageInfo from the storageSelection
+// this is used to store the storage selection in the volume context
 func (s *storageSelection) toStorageInfo() *StorageInfo {
 	si := &StorageInfo{
 		SRsWithTag: s.SRsWithTag,
@@ -101,8 +116,12 @@ func (s *storageSelection) toStorageInfo() *StorageInfo {
 	return si
 }
 
-func storageSelectionFromStorageInfo(si *StorageInfo, vdi *xoa.VDI) *storageSelection {
+// storageSelectionFromStorageInfo creates a storageSelection from the StorageInfo
+// this is used to restore the storage selection from the volume context
+func storageSelectionFromStorageInfo(si *StorageInfo, vdi *xoa.VDI, hostTopology bool) *storageSelection {
 	sr := &storageSelection{
+		hostTopology: hostTopology,
+
 		SRsWithTag: si.SRsWithTag,
 		Migrating:  si.Migrating != nil,
 		CurrentVDI: vdi,
@@ -126,10 +145,14 @@ func (s *storageSelection) getVolumeScope() VolumeScope {
 		return VolumeScopePool
 	}
 
-	return VolumeScopeHost
+	if s.hostTopology {
+		return VolumeScopeHost
+	}
+
+	return VolumeScopePool
 }
 
-// finds relevant SRs based on the inforomation we are given. If we are also given a VDI, we will get the current SR from it.
+// findSRs populates the SRs and CurrentSR fields based on the information we have.
 func (s *storageSelection) findSRs(ctx context.Context, xoaClient xoa.Client) error {
 	switch s.StorageSelectionType {
 	case StorageRepositorySelectionUUID:
@@ -210,6 +233,9 @@ func (s *storageSelection) pickSRForTopology(capacity int64, req *csi.TopologyRe
 	}
 }
 
+// needsMigration checks if we need to migrate the volume to a new SR
+// this will be true if the VM we want to attach to, is on a different host than the current SR.
+// this will only return true if the storage selection has migrating enabled.
 func (s *storageSelection) needsMigration(vm *xoa.VM) (bool, error) {
 	if s.CurrentSR == nil {
 		return true, fmt.Errorf("no current SR found")
@@ -227,6 +253,7 @@ func (s *storageSelection) needsMigration(vm *xoa.VM) (bool, error) {
 	return true, fmt.Errorf("%w: current SR is not valid for host %s", ErrSRNotValidForHost, vm.Host)
 }
 
+// isCurrentSRValidForHost checks if the current SR is valid for the given host
 func (s *storageSelection) isCurrentSRValidForHost(vm *xoa.VM) bool {
 	if s.CurrentSR == nil {
 		return false
@@ -281,13 +308,15 @@ func filterSrsByTopology(srs []xoa.SR, topologies []*csi.Topology, scope VolumeS
 		for _, sr := range srs {
 			switch scope {
 			case VolumeScopeHost:
-				if sr.Host == topology.Segments["host"] && sr.Pool == topology.Segments["pool"] {
-					filteredSrs = append(filteredSrs, sr)
+				if topology.Segments["host"] != "" && sr.Host != topology.Segments["host"] {
+					continue
 				}
+				fallthrough
 			case VolumeScopePool:
-				if sr.Pool == topology.Segments["pool"] {
-					filteredSrs = append(filteredSrs, sr)
+				if topology.Segments["pool"] != "" && sr.Pool != topology.Segments["pool"] {
+					continue
 				}
+				fallthrough
 			case VolumeScopeGlobal:
 				// Global scope is not filtered by topology
 				filteredSrs = append(filteredSrs, sr)
@@ -298,34 +327,34 @@ func filterSrsByTopology(srs []xoa.SR, topologies []*csi.Topology, scope VolumeS
 }
 
 func pickSR(srs []xoa.SR, capacity int64, accessibilityRequirements *csi.TopologyRequirement, scope VolumeScope) (*xoa.SR, error) {
-	// If we have preferred topo, let's first try to find a SR that matches it
-	var filteredPreferredSrs []xoa.SR
-	if accessibilityRequirements != nil {
-		var bestError = ErrNoSRFound
-		filteredPreferredSrs = filterSrsByTopology(srs, accessibilityRequirements.Preferred, scope)
-		bestSR, err := pickSRWithMostSpace(filteredPreferredSrs, capacity)
-		if errors.Is(err, ErrNoSRFound) {
-			// continue
-		} else if errors.Is(err, ErrNoSpace) {
-			bestError = err
-		} else {
-			return bestSR, nil
-		}
-
-		filteredRequisiteSrs := filterSrsByTopology(srs, accessibilityRequirements.Requisite, scope)
-		bestSR, err = pickSRWithMostSpace(filteredRequisiteSrs, capacity)
-		if errors.Is(err, ErrNoSRFound) {
-			// continue
-		} else if errors.Is(err, ErrNoSpace) {
-			bestError = err
-		} else {
-			return bestSR, nil
-		}
-		return nil, bestError
+	// If topology requirement is defined, either preferred or requisite or both are defined.
+	if accessibilityRequirements == nil {
+		return pickSRWithMostSpace(srs, capacity)
 	}
 
-	// Now, let's pick the best SR from the pool based on left over space
-	return pickSRWithMostSpace(srs, capacity)
+	if len(accessibilityRequirements.Preferred) > 0 {
+		// If we have preferred topo, let's first try to find a SR that matches it
+		filteredPreferredSrs := filterSrsByTopology(srs, accessibilityRequirements.Preferred, scope)
+		bestSR, err := pickSRWithMostSpace(filteredPreferredSrs, capacity)
+		if errors.Is(err, ErrNoSRFound) {
+			// no SR found that matches the preferred topology
+		} else if errors.Is(err, ErrNoSpace) {
+			// no SR found that matches the preferred topology and has enough space
+		} else {
+			// we found a SR that matches the preferred topology
+			return bestSR, nil
+		}
+	}
+
+	// If requisite is not defined, we can pick a SR from all the SRs
+	if len(accessibilityRequirements.Requisite) == 0 {
+		return pickSRWithMostSpace(srs, capacity)
+	}
+
+	filteredRequisiteSrs := filterSrsByTopology(srs, accessibilityRequirements.Requisite, scope)
+	bestSR, err := pickSRWithMostSpace(filteredRequisiteSrs, capacity)
+	return bestSR, err
+
 }
 
 func (s *storageSelection) getTopologyForVDI(vdi *xoa.VDI) ([]*csi.Topology, error) {

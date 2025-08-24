@@ -16,9 +16,15 @@ package csi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
+)
+
+var (
+	ErrMalformedVDIMetadata = errors.New("malformed VDI metadata")
+	ErrInvalidVDIMetadata   = errors.New("invalid VDI metadata")
 )
 
 const (
@@ -32,12 +38,13 @@ type EmbeddedVDIMetadata interface {
 }
 
 type StorageInfo struct {
-	Migrating  *Migrating `json:"migrating,omitempty"`
-	SRsWithTag *string    `json:"srsWithTag,omitempty"`
+	Migrating  *Migrating `json:"migrating,omitempty"`  // If migration feature is enabled this is not nil
+	SRsWithTag *string    `json:"srsWithTag,omitempty"` // If storage selection is done through tags this is not nil
 }
 
 type Migrating struct {
-	OngoingMigrationToSRUUID *string `json:"toSRUUID,omitempty"`
+	Enabled            bool    `json:"enabled"`                      // always true
+	InProgressToSRUUID *string `json:"inProgressToSRUUID,omitempty"` // if not nil, a migration is in progress
 }
 
 type DeletionCandidate struct {
@@ -52,7 +59,9 @@ func (n *NoMetadata) ToVDIDescription() string {
 
 func NewStorageInfoWithMigrating(srsWithTag string) *StorageInfo {
 	return &StorageInfo{
-		Migrating: &Migrating{},
+		Migrating: &Migrating{
+			Enabled: true,
+		},
 	}
 }
 
@@ -79,12 +88,12 @@ func parseStorageInfo(description string) (*StorageInfo, error) {
 	var storageInfo StorageInfo
 	err := json.Unmarshal([]byte(description[len(CSIStorageInfoPrefix):]), &storageInfo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse storage info: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrMalformedVDIMetadata, err)
 	}
 
 	if storageInfo.Migrating != nil {
 		if storageInfo.SRsWithTag == nil {
-			return nil, fmt.Errorf("migrating storage info has no SRs with tag")
+			return nil, fmt.Errorf("%w: migrating storage info has no SRs with tag", ErrInvalidVDIMetadata)
 		}
 	}
 
@@ -95,7 +104,7 @@ func parseDeletionCandidate(description string) (*DeletionCandidate, error) {
 	var deletionCandidate DeletionCandidate
 	err := json.Unmarshal([]byte(description[len(CSIStorageDeletionCandidatePrefix):]), &deletionCandidate)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse deletion candidate: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrMalformedVDIMetadata, err)
 	}
 	return &deletionCandidate, nil
 }
@@ -126,11 +135,11 @@ func (s *StorageInfo) HasOngoingMigration() (bool, string) {
 		return false, ""
 	}
 
-	if s.Migrating.OngoingMigrationToSRUUID == nil {
+	if s.Migrating.InProgressToSRUUID == nil {
 		return false, ""
 	}
 
-	return true, *s.Migrating.OngoingMigrationToSRUUID
+	return true, *s.Migrating.InProgressToSRUUID
 }
 
 func (s *StorageInfo) IsMigrating() (bool, *Migrating) {
@@ -142,9 +151,9 @@ func (s *StorageInfo) IsMigrating() (bool, *Migrating) {
 }
 
 func (s *Migrating) StartMigration(srUUID string) {
-	s.OngoingMigrationToSRUUID = &srUUID
+	s.InProgressToSRUUID = &srUUID
 }
 
 func (s *Migrating) EndMigration() {
-	s.OngoingMigrationToSRUUID = nil
+	s.InProgressToSRUUID = nil
 }

@@ -5,6 +5,7 @@ Start here:
 
 Details:
 - [Storage Repositories](storage-repositories.md)
+- [Local Storage](local-storage.md)
 - [Disk Migrations](disk-migrations.md)
 - [Static (pre-existing VDI)](static.md)
 
