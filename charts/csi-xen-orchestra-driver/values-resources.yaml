@@ -1,0 +1,68 @@
+# Recommended starting resources for csi-xen-orchestra-driver
+# This file contains resource limits and requests for all containers
+# Use this file as a starting point for production deployments
+
+# Controller resources
+controller:
+  # CSI Provisioner resources
+  csiProvisioner:
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+  
+  # CSI Attacher resources
+  csiAttacher:
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+  
+  # CSI Resizer resources
+  csiResizer:
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+  
+  # CSI Xen Orchestra Driver resources
+  csiXenOrchestraDriver:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+# Node resources
+node:
+  # CSI Node Driver Registrar resources
+  csiDriverRegistrar:
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 25m
+        memory: 32Mi
+  
+  # CSI Xen Orchestra Driver resources
+  csiXenOrchestraDriver:
+    verbosity: 0
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi

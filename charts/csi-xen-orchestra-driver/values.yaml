@@ -1,0 +1,184 @@
+# Default values for csi-xen-orchestra-driver.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global configuration
+global:
+  imagePullSecrets: []
+  
+  # Name override for the chart
+  nameOverride: ""
+  fullnameOverride: ""
+
+# CSI Xen Orchestra Driver configuration
+csiXenOrchestraDriver:
+  image:
+    repository: ghcr.io/m4rcsi/csi-xen-orchestra-driver
+    tag: v0.2.0
+    pullPolicy: IfNotPresent
+  
+  # Driver-specific configuration
+  config:
+    # Disk name prefix for all driver-managed disks
+    diskNamePrefix: "csi-"
+    # Enable host-level topology instead of pool-level topology
+    hostTopology: false
+    # Enable background cleanup of leaked temporary disks
+    tempCleanup: false
+    # Timeout for Xen Orchestra API calls
+    xoaTimeout: "300s"
+
+# Xen Orchestra authentication
+xenOrchestra:
+  # Secret name for Xen Orchestra credentials
+  secretName: csi-xen-orchestra-credentials
+  # Whether to create the secret (if false, user must create it manually)
+  createSecret: false
+  # Xen Orchestra URL (only used if createSecret is true)
+  url: ""
+  # Xen Orchestra token (only used if createSecret is true)
+  token: ""
+
+# Controller configuration
+controller:
+  # Whether to enable the controller deployment
+  enabled: true
+  # Number of controller replicas
+  replicas: 1
+  
+  # Controller deployment annotations
+  annotations: {}
+  
+  # Controller deployment labels
+  labels: {}
+  
+  # Node selector for controller pods
+  nodeSelector: {}
+  
+  # Tolerations for controller pods
+  tolerations: []
+  
+  # Affinity for controller pods
+  affinity: {}
+  
+  # Pod security context
+  podSecurityContext: {}
+  
+  # Container security context
+  securityContext: {}
+  
+  # Resources for controller containers
+  resources: {}
+  
+  # CSI sidecar configurations
+  csiProvisioner:
+    # Image configuration (optional overrides)
+    image:
+      repository: registry.k8s.io/sig-storage/csi-provisioner
+      tag: v5.3.0
+      pullPolicy: IfNotPresent
+    # Verbosity level (0-5, higher = more verbose)
+    verbosity: 0
+    # Timeout for operations
+    timeout: "300s"
+    # Resource limits (optional overrides)
+    resources: {}
+  
+  csiAttacher:
+    # Image configuration (optional overrides)
+    image:
+      repository: registry.k8s.io/sig-storage/csi-attacher
+      tag: v4.9.0
+      pullPolicy: IfNotPresent
+    # Verbosity level (0-5, higher = more verbose)
+    verbosity: 0
+    # Timeout for operations
+    timeout: "300s"
+    # Resource limits (optional overrides)
+    resources: {}
+  
+  csiResizer:
+    # Image configuration (optional overrides)
+    image:
+      repository: registry.k8s.io/sig-storage/csi-resizer
+      tag: v1.13.2
+      pullPolicy: IfNotPresent
+    # Verbosity level (0-5, higher = more verbose)
+    verbosity: 0
+    # Timeout for operations
+    timeout: "120s"
+    # Resource limits (optional overrides)
+    resources: {}
+  
+  # CSI Xen Orchestra Driver configuration
+  csiXenOrchestraDriver:
+    # Verbosity level (0-5, higher = more verbose)
+    verbosity: 0
+    resources: {}
+
+# Node configuration
+node:
+  # Whether to enable the node daemon set
+  enabled: true
+  
+  # Node daemon set annotations
+  annotations: {}
+  
+  # Node daemon set labels
+  labels: {}
+  
+  # Node selector for node pods
+  nodeSelector: {}
+  
+  # Tolerations for node pods
+  tolerations: []
+  
+  # Affinity for node pods
+  affinity: {}
+  
+  # Pod security context
+  podSecurityContext: {}
+  
+  # CSI Driver Registrar configuration
+  csiDriverRegistrar:
+    # Image configuration (optional overrides)
+    image:
+      repository: registry.k8s.io/sig-storage/csi-node-driver-registrar
+      tag: v2.14.0
+      pullPolicy: IfNotPresent
+    # Verbosity level (0-5, higher = more verbose)
+    verbosity: 0
+    # Resource limits (optional overrides)
+    resources: {}
+  
+  # CSI Xen Orchestra Driver configuration
+  csiXenOrchestraDriver:
+    # Verbosity level (0-5, higher = more verbose)
+    verbosity: 0
+    resources: {}
+    
+
+# Service Account configuration
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Automatically mount a ServiceAccount's API credentials?
+  automount: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use
+  name: ""
+
+# RBAC configuration
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+  # Annotations to add to RBAC resources
+  annotations: {}
+
+# CSI Driver configuration
+csiDriver:
+  # Specifies whether the CSIDriver resource should be created
+  create: true
+  # Annotations to add to the CSIDriver
+  annotations: {}
