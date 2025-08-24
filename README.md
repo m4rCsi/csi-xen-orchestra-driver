@@ -27,6 +27,7 @@ Expecting much broader compatibility, but for now only tested on 1.30 (with Talo
 
 | Driver | Kubernetes |
 | --- | --- |
+| v0.2.0 | 1.30 (tested) |
 | v0.1.0 | 1.30 (tested) |
 
 ## Features
