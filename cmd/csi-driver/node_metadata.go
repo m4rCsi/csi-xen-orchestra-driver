@@ -26,14 +26,16 @@ import (
 )
 
 type NodeMetadataFromKubernetes struct {
-	client   kclient.Interface
-	nodeName string
+	client       kclient.Interface
+	nodeName     string
+	hostTopology bool
 }
 
-func NewNodeMetadataFromKubernetes(client kclient.Interface, nodeName string) *NodeMetadataFromKubernetes {
+func NewNodeMetadataFromKubernetes(client kclient.Interface, nodeName string, hostTopology bool) *NodeMetadataFromKubernetes {
 	return &NodeMetadataFromKubernetes{
-		client:   client,
-		nodeName: nodeName,
+		client:       client,
+		nodeName:     nodeName,
+		hostTopology: hostTopology,
 	}
 }
 
@@ -48,7 +50,11 @@ func (n *NodeMetadataFromKubernetes) GetNodeMetadata() (*csi.NodeMetadata, error
 		return nil, fmt.Errorf("failed to get node: %w", err)
 	}
 
-	hostId := node.Labels["topology.k8s.xenorchestra/host_id"]
+	hostId := ""
+	if n.hostTopology {
+		hostId = node.Labels["topology.k8s.xenorchestra/host_id"]
+	}
+
 	poolId := node.Labels["topology.k8s.xenorchestra/pool_id"]
 
 	return &csi.NodeMetadata{

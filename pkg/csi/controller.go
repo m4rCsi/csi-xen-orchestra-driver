@@ -32,14 +32,16 @@ type ControllerService struct {
 	xoaClient         xoa.Client
 	diskNameGenerator *DiskNameGenerator
 	creationLock      *CreationLock
+	hostTopology      bool
 }
 
-func NewControllerService(driver *Driver, xoaClient xoa.Client, diskNameGenerator *DiskNameGenerator, creationLock *CreationLock) *ControllerService {
+func NewControllerService(driver *Driver, xoaClient xoa.Client, diskNameGenerator *DiskNameGenerator, creationLock *CreationLock, hostTopology bool) *ControllerService {
 	return &ControllerService{
 		driver:            driver,
 		xoaClient:         xoaClient,
 		diskNameGenerator: diskNameGenerator,
 		creationLock:      creationLock,
+		hostTopology:      hostTopology,
 	}
 }
 
@@ -79,7 +81,7 @@ func (cs *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVo
 		capacity = 1024 * 1024 * 1024
 	}
 
-	storageSelection := storageSelectionFromParameters(storageParams)
+	storageSelection := storageSelectionFromParameters(storageParams, cs.hostTopology)
 	err = storageSelection.findSRs(ctx, cs.xoaClient)
 	if errors.Is(err, ErrNoSRFound) {
 		return nil, status.Errorf(codes.FailedPrecondition, "no SRs found for storage selection")
@@ -239,7 +241,7 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 		}, nil
 	}
 
-	storageSelection := storageSelectionFromStorageInfo(storageInfo, vdi)
+	storageSelection := storageSelectionFromStorageInfo(storageInfo, vdi, cs.hostTopology)
 	err = storageSelection.findSRs(ctx, cs.xoaClient)
 	if errors.Is(err, ErrNoSRFound) {
 		return nil, status.Errorf(codes.FailedPrecondition, "no SRs found for storage selection")
@@ -270,8 +272,8 @@ func (cs *ControllerService) ControllerPublishVolume(ctx context.Context, req *c
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	vbd, err = cs.xoaClient.AttachVDIAndWaitForDevice(ctxWithTimeout, vm.UUID, vdi.UUID, "RW")
-		if errors.Is(err, xoa.ErrNoSuchObject) {
-			return nil, status.Errorf(codes.NotFound, "not found")
+	if errors.Is(err, xoa.ErrNoSuchObject) {
+		return nil, status.Errorf(codes.NotFound, "not found")
 	} else if errors.Is(err, xoa.ErrDeviceAlreadyExists) {
 		// TODO: What error code should we use here?
 		return nil, status.Errorf(codes.AlreadyExists, "device already exists: %v", err)
@@ -511,7 +513,7 @@ func (cs *ControllerService) ControllerGetVolume(ctx context.Context, req *csi.C
 		return nil, status.Errorf(codes.Internal, "VDI has no metadata, but should have")
 	}
 
-	storageSelection := storageSelectionFromStorageInfo(storageInfo, vdi)
+	storageSelection := storageSelectionFromStorageInfo(storageInfo, vdi, cs.hostTopology)
 	csiTopology, err := storageSelection.getTopologyForVDI(vdi)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get topology: %v", err)

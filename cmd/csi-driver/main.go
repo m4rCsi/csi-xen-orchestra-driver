@@ -39,6 +39,7 @@ var (
 	diskNamePrefix = flag.String("disk-name-prefix", "", "Disk name prefix")
 	tempCleanup    = flag.Bool("temp-cleanup", false, "Run temporary cleanup")
 	xoaTimeout     = flag.Duration("xoa-timeout", 300*time.Second, "Timeout for XOA API calls")
+	hostTopology   = flag.Bool("host-topology", false, "Use host topology")
 )
 
 func main() {
@@ -98,7 +99,7 @@ func main() {
 			klog.Fatalf("failed to create kubernetes client: %v", err)
 		}
 
-		nodeMetadata = NewNodeMetadataFromKubernetes(kclient, *nodeName)
+		nodeMetadata = NewNodeMetadataFromKubernetes(kclient, *nodeName, *hostTopology)
 		mounter = csi.NewSafeMounter()
 	}
 
@@ -109,6 +110,7 @@ func main() {
 			DriverNameOverride: *nameOverride,
 			TempCleanup:        *tempCleanup,
 			DiskNamePrefix:     *diskNamePrefix,
+			HostTopology:       *hostTopology,
 		},
 		xoaClient,
 		nodeMetadata,

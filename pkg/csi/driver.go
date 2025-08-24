@@ -47,6 +47,7 @@ type DriverOptions struct {
 
 	TempCleanup    bool
 	DiskNamePrefix string
+	HostTopology   bool
 }
 
 // Mode is the operating mode of the CSI driver.
@@ -124,7 +125,7 @@ func (d *Driver) Run() error {
 	grpcInterceptor := func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		log := klog.FromContext(ctx).WithValues("method", info.FullMethod)
 		ctx = klog.NewContext(ctx, log)
-		log.Info(fmt.Sprintf("Method called: %s", info.FullMethod))
+		log.V(2).Info(fmt.Sprintf("Method called: %s", info.FullMethod))
 
 		resp, err := handler(ctx, req)
 		if err != nil {
@@ -148,7 +149,7 @@ func (d *Driver) Run() error {
 			return fmt.Errorf("xoaClient is required for controller mode")
 		}
 		klog.InfoS("Starting controller service")
-		d.controller = NewControllerService(d, d.xoaClient, d.diskNameGenerator, d.creationLock)
+		d.controller = NewControllerService(d, d.xoaClient, d.diskNameGenerator, d.creationLock, d.options.HostTopology)
 		csi.RegisterControllerServer(d.server, d.controller)
 
 		if d.options.TempCleanup {

@@ -45,6 +45,7 @@ How to use the driver
 - selecting [Storage Repositories](docs/storage-repositories.md)
 - feature [Disk Migrations](docs/disk-migrations.md)
 - pre existing [Static volumes](docs/static.md)
+- considerations when using [Local Storage](docs/local-storage.md)
 
 Configuration
 - [StorageClass parameters](docs/storage-class.md)
