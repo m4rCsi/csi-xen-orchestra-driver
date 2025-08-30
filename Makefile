@@ -1,16 +1,25 @@
-# For Development:
-# IMAGE_NAME := registry.marcsi.ch/homelab/csi-xen-orchestra-driver
-# HELM_REPO := ghcr.io/m4rcsi/charts/
-# VERSION := dev
-# IMAGE_TAG := dev 
-# CHART_VERSION := v0.0.0-dev
+# Set RELEASE=true or RELEASE=1 to use release settings
+# Default is development mode
+RELEASE ?= false
 
-# For Release:
 IMAGE_NAME := ghcr.io/m4rcsi/csi-xen-orchestra-driver
 HELM_REPO := ghcr.io/m4rcsi/charts/
-VERSION := 0.2.0
+VERSION := 0.2.1
 IMAGE_TAG := v$(VERSION)
 CHART_VERSION := $(VERSION)
+
+ifneq ($(RELEASE),true)
+    # Check if DEVELOPMENT_IMAGE_NAME is set for development mode
+    ifndef DEVELOPMENT_IMAGE_NAME
+        $(error DEVELOPMENT_IMAGE_NAME environment variable is required for development mode)
+    endif
+
+    IMAGE_NAME := $(DEVELOPMENT_IMAGE_NAME)
+    HELM_REPO := ghcr.io/m4rcsi/charts/
+    VERSION := dev
+    IMAGE_TAG := dev
+    CHART_VERSION := v0.0.0-dev
+endif
 
 .PHONY: build
 build:
@@ -35,21 +44,16 @@ deploy: push
 			--install \
 			--namespace kube-system \
 			--values charts/csi-xen-orchestra-driver/values-resources.yaml \
+			--values dev-values.yaml \
 			--set csiXenOrchestraDriver.image.repository=$(IMAGE_NAME) \
 			--set csiXenOrchestraDriver.image.digest=$(DIGEST) \
-			--set csiXenOrchestraDriver.config.diskNamePrefix=csistaging- \
-			--set csiXenOrchestraDriver.config.hostTopology=false \
-			--set csiXenOrchestraDriver.config.tempCleanup=true \
-			--set controller.csiXenOrchestraDriver.verbosity=4 \
-			--set node.csiXenOrchestraDriver.verbosity=4 \
-			--set global.imagePullSecret=marcsi-gitlab-secret
+			$(if $(EXTRA_HELM_VALUES),$(EXTRA_HELM_VALUES),)
 
 helm-package:
 	helm package charts/csi-xen-orchestra-driver -d dist --app-version v$(VERSION) --version $(CHART_VERSION)
 
 helm-publish: helm-package
 	helm push dist/csi-xen-orchestra-driver-$(CHART_VERSION).tgz oci://$(HELM_REPO)
-
 
 .PHONY: clean
 clean:

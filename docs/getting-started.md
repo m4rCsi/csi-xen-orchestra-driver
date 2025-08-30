@@ -18,7 +18,7 @@ kubectl create secret generic csi-xen-orchestra-credentials \
 
 ```sh
 # From Last Release
-kubectl apply -f https://github.com/m4rCsi/csi-xen-orchestra-driver/releases/download/v0.2.0/driver.yaml
+helm -n kube-system install csi-xen-orchestra oci://ghcr.io/m4rcsi/charts/csi-xen-orchestra-driver 
 ```
 
 See [Driver Configuration](./driver-configuration.md) for configuration options.
