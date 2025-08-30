@@ -1,0 +1,205 @@
+{{- if .Values.controller.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "csi-xen-orchestra-driver.fullname" . }}-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csi-xen-orchestra-driver.labels" . | nindent 4 }}
+    app: {{ include "csi-xen-orchestra-driver.fullname" . }}-controller
+    component: controller
+  {{- with .Values.controller.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.controller.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "csi-xen-orchestra-driver.fullname" . }}-controller
+      component: controller
+  template:
+    metadata:
+      labels:
+        app: {{ include "csi-xen-orchestra-driver.fullname" . }}-controller
+        component: controller
+      {{- with .Values.controller.labels }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "csi-xen-orchestra-driver.serviceAccountName" . }}
+      {{- with .Values.controller.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.controller.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.controller.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.controller.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: csi-provisioner
+        image: "{{ .Values.controller.csiProvisioner.image.repository }}:{{ .Values.controller.csiProvisioner.image.tag }}"
+        imagePullPolicy: {{ .Values.controller.csiProvisioner.image.pullPolicy }}
+        args:
+          - "--csi-address=$(ADDRESS)"
+          - "--leader-election"
+          - "--http-endpoint=:8080"
+          - "--timeout={{ .Values.controller.csiProvisioner.timeout }}"
+          {{- if .Values.controller.csiProvisioner.verbosity }}
+          - "--v={{ .Values.controller.csiProvisioner.verbosity }}"
+          {{- end }}
+        env:
+          - name: ADDRESS
+            value: /var/lib/csi/sockets/pluginproxy/csi.socket
+        volumeMounts:
+          - name: socket-dir
+            mountPath: /var/lib/csi/sockets/pluginproxy/
+        ports:
+          - containerPort: 8080
+            name: http-endpoint
+            protocol: TCP
+        livenessProbe:
+          failureThreshold: 1
+          httpGet:
+            path: /healthz/leader-election
+            port: http-endpoint
+          initialDelaySeconds: 10
+          timeoutSeconds: 10
+          periodSeconds: 20
+        {{- with .Values.controller.csiProvisioner.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.controller.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+
+      - name: csi-attacher
+        image: "{{ .Values.controller.csiAttacher.image.repository }}:{{ .Values.controller.csiAttacher.image.tag }}"
+        imagePullPolicy: {{ .Values.controller.csiAttacher.image.pullPolicy }}
+        args:
+          - "--csi-address=$(ADDRESS)"
+          - "--http-endpoint=:8081"
+          - "--timeout={{ .Values.controller.csiAttacher.timeout }}"
+          {{- if .Values.controller.csiAttacher.verbosity }}
+          - "--v={{ .Values.controller.csiAttacher.verbosity }}"
+          {{- end }}
+        env:
+          - name: ADDRESS
+            value: /var/lib/csi/sockets/pluginproxy/csi.socket
+        volumeMounts:
+          - name: socket-dir
+            mountPath: /var/lib/csi/sockets/pluginproxy/
+        ports:
+          - containerPort: 8081
+            name: http-endpoint
+            protocol: TCP
+        {{- with .Values.controller.csiAttacher.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.controller.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+
+      - name: csi-resizer
+        image: "{{ .Values.controller.csiResizer.image.repository }}:{{ .Values.controller.csiResizer.image.tag }}"
+        imagePullPolicy: {{ .Values.controller.csiResizer.image.pullPolicy }}
+        args:
+          - "--csi-address=$(ADDRESS)"
+          - "--leader-election"
+          - "--http-endpoint=:8082"
+          - "--timeout={{ .Values.controller.csiResizer.timeout }}"
+          {{- if .Values.controller.csiResizer.verbosity }}
+          - "--v={{ .Values.controller.csiResizer.verbosity }}"
+          {{- end }}
+        env:
+          - name: ADDRESS
+            value: /var/lib/csi/sockets/pluginproxy/csi.socket
+        volumeMounts:
+          - name: socket-dir
+            mountPath: /var/lib/csi/sockets/pluginproxy/
+        ports:
+          - containerPort: 8082
+            name: http-endpoint
+            protocol: TCP
+        livenessProbe:
+          failureThreshold: 1
+          httpGet:
+            path: /healthz/leader-election
+            port: http-endpoint
+          initialDelaySeconds: 10
+          timeoutSeconds: 10
+          periodSeconds: 20
+        {{- with .Values.controller.csiResizer.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.controller.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+
+      - name: csi-xen-orchestra-driver
+        image: "{{ .Values.csiXenOrchestraDriver.image.repository }}{{ if .Values.csiXenOrchestraDriver.image.digest }}@{{ .Values.csiXenOrchestraDriver.image.digest }}{{ else if .Values.csiXenOrchestraDriver.image.tag }}:{{ .Values.csiXenOrchestraDriver.image.tag }}{{ else }}:{{ .Chart.AppVersion }}{{ end }}"
+        imagePullPolicy: {{ .Values.csiXenOrchestraDriver.image.pullPolicy }}
+        args:
+          - "--endpoint=$(CSI_ENDPOINT)"
+          - "--controller=true"
+          - "--xoa-timeout={{ .Values.csiXenOrchestraDriver.config.xoaTimeout }}"
+          {{- if .Values.csiXenOrchestraDriver.config.diskNamePrefix }}
+          - "--disk-name-prefix={{ .Values.csiXenOrchestraDriver.config.diskNamePrefix }}"
+          {{- end }}
+          {{- if .Values.csiXenOrchestraDriver.config.hostTopology }}
+          - "--host-topology={{ .Values.csiXenOrchestraDriver.config.hostTopology }}"
+          {{- end }}
+          {{- if .Values.csiXenOrchestraDriver.config.tempCleanup }}
+          - "--temp-cleanup={{ .Values.csiXenOrchestraDriver.config.tempCleanup }}"
+          {{- end }}
+          {{- if .Values.controller.csiXenOrchestraDriver.verbosity }}
+          - "--v={{ .Values.controller.csiXenOrchestraDriver.verbosity }}"
+          {{- end }}
+        env:
+          - name: CSI_ENDPOINT
+            value: unix:///var/lib/csi/sockets/pluginproxy/csi.socket
+          - name: XOA_URL
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.xenOrchestra.secretName }}
+                key: url
+          - name: XOA_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.xenOrchestra.secretName }}
+                key: token
+        volumeMounts:
+          - name: socket-dir
+            mountPath: /var/lib/csi/sockets/pluginproxy/
+        {{- with .Values.controller.csiXenOrchestraDriver.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.controller.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+
+      volumes:
+      - name: socket-dir
+        emptyDir: {}
+{{- end }}

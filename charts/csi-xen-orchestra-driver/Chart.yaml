@@ -1,0 +1,31 @@
+apiVersion: v2
+name: csi-xen-orchestra-driver
+description: A Helm chart for the CSI Xen Orchestra Driver - a Container Storage Interface driver for Xen Orchestra
+type: application
+
+# This is the chart version. This version number should be incremented each time you make changes
+# to the chart and its templates, including the app version.
+# Versions are expected to follow Semantic Versioning (https://semver.org/)
+version: 0.0.1
+
+# This is the version number of the application being deployed. This version number should be
+# incremented each time you make changes to the application. Versions are not expected to
+# follow Semantic Versioning. They should reflect the version the application is using.
+# It is recommended to use it with quotes.
+appVersion: "v0.0.0"
+
+keywords:
+  - csi
+  - storage
+  - xen-orchestra
+  - xen
+  - kubernetes
+
+home: https://github.com/m4rcsi/csi-xen-orchestra-driver
+
+sources:
+  - https://github.com/m4rcsi/csi-xen-orchestra-driver
+
+maintainers:
+  - name: m4rcsi
+    email: shin@marcsi.ch

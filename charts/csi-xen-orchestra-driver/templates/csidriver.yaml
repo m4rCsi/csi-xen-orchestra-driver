@@ -1,0 +1,17 @@
+{{- if .Values.csiDriver.create -}}
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: csi.xen-orchestra.marcsi.ch
+  labels:
+    {{- include "csi-xen-orchestra-driver.labels" . | nindent 4 }}
+  {{- with .Values.csiDriver.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  attachRequired: true
+  podInfoOnMount: false
+  volumeLifecycleModes:
+    - Persistent
+{{- end }}

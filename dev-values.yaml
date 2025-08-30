@@ -1,0 +1,13 @@
+csiXenOrchestraDriver:
+  config:
+    diskNamePrefix: csidev-
+    hostTopology: false
+    tempCleanup: true
+
+controller:
+  csiXenOrchestraDriver:
+    verbosity: 4
+
+node: 
+  csiXenOrchestraDriver:
+    verbosity: 4

@@ -15,22 +15,17 @@ Adjust the makefile settings:
 the makefile will update the image in the kustomize file and then deploy it
 
 ```bash
+# When developing, it's expected to bring your own registry
+export DEVELOPMENT_IMAGE_NAME=some-registry.example.com/csi-xen-orchestra-driver
+
 make deploy
 ```
 
 
 ## Release
-- Update `IMAGE_TAG` to release version in Makefile (e.g. `v0.1.0`)
-- Run `make build push`
-- Update getting-started.md and README.md if necessary
-
-```bash
-cd deploy/kustomize/overlays/release
-vi kustomization.yaml # and update the newTag
-kubectl kustomize .  -o driver.yaml # this will be a release artifact
-```
-
-- Git Commit and push the kustomization.yaml update
-- Create a release with the release artifact
-
-
+- Update `VERSION` to release version in Makefile (e.g. `0.1.0`)
+- Publish Image: Run `RELEASE=true make build push`
+- Publish Chart: Run `RELEASE=true make helm-publish`
+- Update README.md if necessary
+- Git Commit and push
+- Create a release

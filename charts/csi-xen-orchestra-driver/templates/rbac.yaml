@@ -1,7 +1,15 @@
+{{- if .Values.rbac.create -}}
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: csi-xen-orchestra-role
+  name: {{ include "csi-xen-orchestra-driver.fullname" . }}-role
+  labels:
+    {{- include "csi-xen-orchestra-driver.labels" . | nindent 4 }}
+  {{- with .Values.rbac.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 rules:
 - apiGroups: [""]
   resources: ["nodes"]
@@ -36,16 +44,24 @@ rules:
 - apiGroups: [""]
   resources: ["persistentvolumeclaims/status"]
   verbs: ["patch"]
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: csi-xen-orchestra-binding
+  name: {{ include "csi-xen-orchestra-driver.fullname" . }}-binding
+  labels:
+    {{- include "csi-xen-orchestra-driver.labels" . | nindent 4 }}
+  {{- with .Values.rbac.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 subjects:
 - kind: ServiceAccount
-  name: csi-xen-orchestra-sa
-  namespace: kube-system
+  name: {{ include "csi-xen-orchestra-driver.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: csi-xen-orchestra-role
-  apiGroup: rbac.authorization.k8s.io 
+  name: {{ include "csi-xen-orchestra-driver.fullname" . }}-role
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

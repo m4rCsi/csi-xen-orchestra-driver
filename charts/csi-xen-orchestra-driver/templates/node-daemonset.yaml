@@ -1,0 +1,150 @@
+{{- if .Values.node.enabled -}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "csi-xen-orchestra-driver.fullname" . }}-node
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csi-xen-orchestra-driver.labels" . | nindent 4 }}
+    app: {{ include "csi-xen-orchestra-driver.fullname" . }}-node
+    component: node
+  {{- with .Values.node.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "csi-xen-orchestra-driver.fullname" . }}-node
+      component: node
+  template:
+    metadata:
+      labels:
+        app: {{ include "csi-xen-orchestra-driver.fullname" . }}-node
+        component: node
+      {{- with .Values.node.labels }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "csi-xen-orchestra-driver.serviceAccountName" . }}
+      {{- with .Values.node.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.node.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.node.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.node.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: csi-driver-registrar
+        image: "{{ .Values.node.csiDriverRegistrar.image.repository }}:{{ .Values.node.csiDriverRegistrar.image.tag }}"
+        imagePullPolicy: {{ .Values.node.csiDriverRegistrar.image.pullPolicy }}
+        args:
+          - "--csi-address=/csi/csi.sock"
+          - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi.xen-orchestra.marcsi.ch/csi.sock"
+          - "--health-port=9809"
+          {{- if .Values.node.csiDriverRegistrar.verbosity }}
+          - "--v={{ .Values.node.csiDriverRegistrar.verbosity }}"
+          {{- end }}
+        volumeMounts:
+          - name: plugin-dir
+            mountPath: /csi
+          - name: registration-dir
+            mountPath: /registration
+        ports:
+          - containerPort: 9809
+            name: healthz
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: healthz
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+        {{- with .Values.node.csiDriverRegistrar.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+
+      - name: csi-xen-orchestra-driver
+        image: "{{ .Values.csiXenOrchestraDriver.image.repository }}{{ if .Values.csiXenOrchestraDriver.image.digest }}@{{ .Values.csiXenOrchestraDriver.image.digest }}{{ else if .Values.csiXenOrchestraDriver.image.tag }}:{{ .Values.csiXenOrchestraDriver.image.tag }}{{ else }}:{{ .Chart.AppVersion }}{{ end }}"
+        imagePullPolicy: {{ .Values.csiXenOrchestraDriver.image.pullPolicy }}
+        args:
+          - "--endpoint=$(CSI_ENDPOINT)"
+          - "--controller=false"
+          - "--node=true"
+          - "--node-name=$(NODE_NAME)"
+          {{- if .Values.csiXenOrchestraDriver.config.hostTopology }}
+          - "--host-topology={{ .Values.csiXenOrchestraDriver.config.hostTopology }}"
+          {{- end }}
+          {{- if .Values.node.csiXenOrchestraDriver.verbosity }}
+          - "--v={{ .Values.node.csiXenOrchestraDriver.verbosity }}"
+          {{- end }}
+        env:
+          - name: CSI_ENDPOINT
+            value: unix:///csi/csi.sock
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+        volumeMounts:
+        - name: plugin-dir
+          mountPath: /csi
+        - name: host-dev
+          mountPath: /dev
+        - name: kubelet-dir
+          mountPath: /var/lib/kubelet
+          mountPropagation: "Bidirectional"
+        {{- with .Values.node.csiXenOrchestraDriver.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        # Required security context for CSI driver operations
+        # The CSI driver needs privileged access to:
+        # - Mount host volumes (SYS_ADMIN capability)
+        # - Access host devices (/dev)
+        # - Interact with kubelet for volume operations
+        securityContext:
+          allowPrivilegeEscalation: true
+          capabilities:
+            add:
+              - SYS_ADMIN
+          privileged: true
+          runAsUser: 0
+
+      volumes:
+      # This volume is where the driver mounts the socket
+      - name: plugin-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins/csi.xen-orchestra.marcsi.ch
+          type: DirectoryOrCreate
+
+      # This volume is where the node-driver-registrar registers the plugin
+      # with kubelet
+      - name: registration-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry
+          type: Directory
+
+      - name: host-dev
+        hostPath:
+          path: /dev
+
+      # This volume is where the driver mounts volumes
+      - name: kubelet-dir
+        hostPath:
+          path: /var/lib/kubelet
+          type: Directory
+{{- end }}
