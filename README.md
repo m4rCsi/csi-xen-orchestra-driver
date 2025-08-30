@@ -59,3 +59,12 @@ Development
 - [Development](DEVELOPMENT.md)
 
 
+## Contributing
+
+Contributions are welcome. 
+
+## TODO/Roadmap
+
+- Prometheus metrics
+- Kubernetes Support Matrix (and test up to latest kubernetes)
+- Investigate what happens when running without cloud-controller-manager and degrade gracefully
