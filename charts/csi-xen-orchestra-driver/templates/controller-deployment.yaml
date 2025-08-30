@@ -156,7 +156,7 @@ spec:
         {{- end }}
 
       - name: csi-xen-orchestra-driver
-        image: "{{ .Values.csiXenOrchestraDriver.image.repository }}:{{ .Values.csiXenOrchestraDriver.image.tag }}"
+        image: "{{ .Values.csiXenOrchestraDriver.image.repository }}{{ if .Values.csiXenOrchestraDriver.image.digest }}@{{ .Values.csiXenOrchestraDriver.image.digest }}{{ else if .Values.csiXenOrchestraDriver.image.tag }}:{{ .Values.csiXenOrchestraDriver.image.tag }}{{ else }}:{{ .Chart.AppVersion }}{{ end }}"
         imagePullPolicy: {{ .Values.csiXenOrchestraDriver.image.pullPolicy }}
         args:
           - "--endpoint=$(CSI_ENDPOINT)"

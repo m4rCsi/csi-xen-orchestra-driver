@@ -14,7 +14,10 @@ global:
 csiXenOrchestraDriver:
   image:
     repository: ghcr.io/m4rcsi/csi-xen-orchestra-driver
-    tag: v0.2.0
+    # Leave empty to use Chart.AppVersion, or specify custom tag
+    tag: ""
+    # Optional: specify image digest instead of tag (takes precedence over tag and appVersion)
+    digest: ""
     pullPolicy: IfNotPresent
   
   # Driver-specific configuration

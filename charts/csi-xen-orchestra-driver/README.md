@@ -11,22 +11,13 @@ This Helm chart deploys the CSI Xen Orchestra Driver, a Container Storage Interf
 
 ## Quick Start
 
-**Workflow**: Add the repository, then install the chart with your preferred method.
-
-### 1. Add the Helm repository (if published)
-
-```bash
-helm repo add csi-xen-orchestra https://your-repo-url
-helm repo update
-```
-
-### 2. Install the chart
+### 1. Install the chart
 
 You have two options:
 
 **Option A: Let the chart create the secret (simplest)**
 ```bash
-helm install csi-xen-orchestra csi-xen-orchestra/csi-xen-orchestra-driver \
+helm install csi-xen-orchestra oci://ghcr.io/m4rcsi/charts/csi-xen-orchestra-driver \
   --namespace kube-system \
   --set xenOrchestra.createSecret=true \
   --set xenOrchestra.url="https://your-xoa.example.com" \
@@ -37,21 +28,21 @@ helm install csi-xen-orchestra csi-xen-orchestra/csi-xen-orchestra-driver \
 ```bash
 # Create the secret first
 kubectl create secret generic csi-xen-orchestra-credentials \
-  -n kube-system \
+  --namespace kube-system \
   --from-literal=url="https://your-xoa.example.com" \
   --from-literal=token="your-api-token"
 
 # Then install the chart
-helm install csi-xen-orchestra csi-xen-orchestra/csi-xen-orchestra-driver \
-  --namespace kube-system \
-  --set xenOrchestra.createSecret=false
+helm install csi-xen-orchestra oci://ghcr.io/m4rcsi/charts/csi-xen-orchestra-driver \
+  --namespace kube-system 
 ```
 
 **Adding resource limits**: If you want to set resource limits, you can use the provided resources file with either option above:
 
 ```bash
 # Download the chart to get the resources file
-helm pull csi-xen-orchestra/csi-xen-orchestra-driver --untar
+helm pull oci://ghcr.io/m4rcsi/charts/csi-xen-orchestra-driver --untar
+cat csi-xen-orchestra-driver/values-resources.yaml
 ```
 
 Adjust the resources as you see fit in your environment and use with `-f csi-xen-orchestra-driver/values-resources.yaml`
@@ -108,7 +99,9 @@ Adjust the resources as you see fit in your environment and use with `-f csi-xen
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `csiXenOrchestraDriver.image.repository` | Driver image repository | `ghcr.io/m4rcsi/csi-xen-orchestra-driver` |
-| `csiXenOrchestraDriver.image.tag` | Driver image tag | `v0.2.0` |
+| `csiXenOrchestraDriver.image.tag` | Driver image tag (leave empty to use Chart.AppVersion) | `""` |
+| `csiXenOrchestraDriver.image.digest` | Driver image digest (takes precedence over tag and appVersion) | `""` |
+| `csiXenOrchestraDriver.image.pullPolicy` | Driver image pull policy | `IfNotPresent` |
 | `csiXenOrchestraDriver.config.diskNamePrefix` | Prefix for all driver-managed disks | `csi-` |
 | `csiXenOrchestraDriver.config.hostTopology` | Enable host-level topology | `false` |
 | `csiXenOrchestraDriver.config.tempCleanup` | Enable temporary disk cleanup | `false` |
@@ -168,16 +161,14 @@ Adjust the resources as you see fit in your environment and use with `-f csi-xen
 | `global.nameOverride` | Override the chart name | `""` |
 | `global.fullnameOverride` | Override the full name | `""` |
 
-## Example Values Files
+## Advanced Configuration
+
+### Resource Limits
 
 The chart includes example configuration files to help you get started:
 
 - **`values-resources.yaml`**: Recommended starting resources
   - Resource limits and requests for all containers
-
-## Advanced Configuration
-
-### Resource Limits
 
 Set resource limits for containers:
 
@@ -254,17 +245,17 @@ kubectl logs -n kube-system -l app=csi-xen-orchestra-driver-node -c csi-driver-r
 ## Upgrading
 
 ```bash
-helm upgrade csi-xen-orchestra csi-xen-orchestra/csi-xen-orchestra-driver \
+helm upgrade csi-xen-orchestra oci://ghcr.io/m4rcsi/charts/csi-xen-orchestra-driver \
   --namespace kube-system
 ```
+
 
 ## Uninstalling
 
 ```bash
 helm uninstall csi-xen-orchestra -n kube-system
+# and delete manually created secret (if applicable)
 ```
-
-**Note**: The CSIDriver resource and RBAC resources are cluster-scoped and may need to be manually cleaned up if they were created outside the chart.
 
 ## Support
 
