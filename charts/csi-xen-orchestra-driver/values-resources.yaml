@@ -53,7 +53,6 @@ node:
   
   # CSI Xen Orchestra Driver resources
   csiXenOrchestraDriver:
-    verbosity: 0
     resources:
       limits:
         memory: 20Mi
