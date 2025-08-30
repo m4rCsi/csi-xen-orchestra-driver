@@ -4,6 +4,8 @@
 [![CI](https://github.com/m4rcsi/csi-xen-orchestra-driver/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/m4rcsi/csi-xen-orchestra-driver/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/m4rcsi/csi-xen-orchestra-driver)](https://goreportcard.com/report/github.com/m4rCsi/csi-xen-orchestra-driver)
 
+![Logo](./csi-xen-orchestra-driver.svg)
+
 # csi-xen-orchestra-driver
 
 > [!WARNING]
