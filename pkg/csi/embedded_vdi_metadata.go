@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"k8s.io/utils/ptr"
 )
 
 var (
@@ -43,7 +45,7 @@ type StorageInfo struct {
 }
 
 type Migrating struct {
-	Enabled            bool    `json:"enabled"`                      // always true
+	Enabled            *bool   `json:"enabled,omitempty"`            // is always true, this is to make it visually nicer in the VDI description
 	InProgressToSRUUID *string `json:"inProgressToSRUUID,omitempty"` // if not nil, a migration is in progress
 }
 
@@ -57,12 +59,19 @@ func (n *NoMetadata) ToVDIDescription() string {
 	return ""
 }
 
-func NewStorageInfoWithMigrating(srsWithTag string) *StorageInfo {
+func NewStorageInfoWithMigrating(srsWithTag *string) *StorageInfo {
 	return &StorageInfo{
 		Migrating: &Migrating{
-			Enabled: true,
+			// we explicitly set it to true,
+			// this makes it visually nicer to see in the VDI description
+			Enabled: ptr.To(true),
 		},
+		SRsWithTag: srsWithTag,
 	}
+}
+
+func NewStorageInfo() *StorageInfo {
+	return &StorageInfo{}
 }
 
 func NewDeletionCandidate(unusedSince time.Time) *DeletionCandidate {
@@ -92,6 +101,7 @@ func parseStorageInfo(description string) (*StorageInfo, error) {
 	}
 
 	if storageInfo.Migrating != nil {
+		storageInfo.Migrating.Enabled = ptr.To(true) // if for some reason the enabled flag is not set, we set it to true
 		if storageInfo.SRsWithTag == nil {
 			return nil, fmt.Errorf("%w: migrating storage info has no SRs with tag", ErrInvalidVDIMetadata)
 		}
@@ -142,7 +152,7 @@ func (s *StorageInfo) HasOngoingMigration() (bool, string) {
 	return true, *s.Migrating.InProgressToSRUUID
 }
 
-func (s *StorageInfo) IsMigrating() (bool, *Migrating) {
+func (s *StorageInfo) IsMigratingType() (bool, *Migrating) {
 	if s.Migrating == nil {
 		return false, nil
 	}
