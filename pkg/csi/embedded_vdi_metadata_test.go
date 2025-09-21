@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	ptr "k8s.io/utils/ptr"
 )
 
 func TestEmbeddedVDIMetadataFromDescription(t *testing.T) {
@@ -73,7 +74,7 @@ func TestStorageInfoMetadata(t *testing.T) {
 	assert.False(t, ongoingMigration)
 	assert.Equal(t, "", toSRUUID)
 
-	isMigrating, migrating := metadata.(*StorageInfo).IsMigrating()
+	isMigrating, migrating := metadata.(*StorageInfo).IsMigratingType()
 	assert.True(t, isMigrating)
 	assert.Nil(t, migrating.InProgressToSRUUID)
 
@@ -98,4 +99,13 @@ func TestStorageInfoMetadata(t *testing.T) {
 
 	descriptionWithoutMigration := metadata.ToVDIDescription()
 	assert.Equal(t, `csi:info: {"migrating":{"enabled":true},"srsWithTag":"some-tag"}`, descriptionWithoutMigration)
+}
+
+func TestStorageInfoMetadataCreation(t *testing.T) {
+	metadata := NewStorageInfoWithMigrating(ptr.To("some-tag"))
+	assert.True(t, *metadata.Migrating.Enabled)
+	assert.Nil(t, metadata.Migrating.InProgressToSRUUID)
+
+	description := metadata.ToVDIDescription()
+	assert.Equal(t, `csi:info: {"migrating":{"enabled":true},"srsWithTag":"some-tag"}`, description)
 }

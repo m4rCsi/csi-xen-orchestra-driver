@@ -105,15 +105,11 @@ func (s *storageSelection) VolumeIDType() VolumeIDType {
 // toStorageInfo creates a StorageInfo from the storageSelection
 // this is used to store the storage selection in the volume context
 func (s *storageSelection) toStorageInfo() *StorageInfo {
-	si := &StorageInfo{
-		SRsWithTag: s.SRsWithTag,
+	if !s.Migrating {
+		return NewStorageInfo()
 	}
 
-	if s.Migrating {
-		si.Migrating = &Migrating{}
-	}
-
-	return si
+	return NewStorageInfoWithMigrating(s.SRsWithTag)
 }
 
 // storageSelectionFromStorageInfo creates a storageSelection from the StorageInfo
