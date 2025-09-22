@@ -4,7 +4,7 @@ RELEASE ?= false
 
 IMAGE_NAME := ghcr.io/m4rcsi/csi-xen-orchestra-driver
 HELM_REPO := ghcr.io/m4rcsi/charts/
-VERSION := 0.2.1
+VERSION := 0.2.2
 IMAGE_TAG := v$(VERSION)
 CHART_VERSION := $(VERSION)
 
