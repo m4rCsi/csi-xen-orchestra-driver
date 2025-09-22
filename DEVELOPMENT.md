@@ -8,12 +8,6 @@
 
 ## Deploy
 
-Adjust the makefile settings:
-- OVERLAY_DIR (i.e. create your own with your own patches)
-- IMAGE_NAME (i.e. if you want to host dev images on a different registry)
-
-the makefile will update the image in the kustomize file and then deploy it
-
 ```bash
 # When developing, it's expected to bring your own registry
 export DEVELOPMENT_IMAGE_NAME=some-registry.example.com/csi-xen-orchestra-driver
@@ -27,5 +21,5 @@ make deploy
 - Publish Image: Run `RELEASE=true make build push`
 - Publish Chart: Run `RELEASE=true make helm-publish`
 - Update README.md if necessary
-- Git Commit and push
-- Create a release
+- Git commit and push
+- Create a github release
