@@ -1,89 +1,35 @@
 CSI Xen Orchestra Driver has been installed!
 
-## Next Steps
+QUICK START
+===========
 
-### 1. Verify Installation
+1. Verify installation:
+   kubectl get csidriver csi.xen-orchestra.marcsi.ch
+   kubectl get pods -n {{ .Release.Namespace }} -l app={{ include "csi-xen-orchestra-driver.fullname" . }}-controller
 
-Check if all components are running:
+2. Create a StorageClass:
+   # For shared storage
+   kubectl apply -f https://raw.githubusercontent.com/m4rcsi/csi-xen-orchestra-driver/main/examples/sc-shared.yaml
+   
+   # For localmigrating storage
+   kubectl apply -f https://raw.githubusercontent.com/m4rcsi/csi-xen-orchestra-driver/main/examples/sc-localmigrating.yaml
 
-```bash
-# Check CSIDriver registration
-kubectl get csidriver csi.xen-orchestra.marcsi.ch
+3. Test with a PVC:
+   kubectl apply -f https://raw.githubusercontent.com/m4rcsi/csi-xen-orchestra-driver/main/examples/dynamic/pvc.yaml
 
-# Check controller deployment
-kubectl get pods -n {{ .Release.Namespace }} -l app={{ include "csi-xen-orchestra-driver.fullname" . }}-controller
+NEXT STEPS
+==========
 
-# Check node daemon set
-kubectl get pods -n {{ .Release.Namespace }} -l app={{ include "csi-xen-orchestra-driver.fullname" . }}-node
-```
+- Configuration: https://github.com/m4rcsi/csi-xen-orchestra-driver/blob/main/docs/driver-configuration.md
+- Storage Classes: https://github.com/m4rcsi/csi-xen-orchestra-driver/blob/main/docs/storage-class.md
+- Getting Started: https://github.com/m4rcsi/csi-xen-orchestra-driver/blob/main/docs/getting-started.md
 
-### 2. Verify Xen Orchestra Credentials
+TROUBLESHOOTING
+==============
 
-Ensure the Xen Orchestra credentials secret exists and contains valid data:
+Check driver logs:
+kubectl logs -n {{ .Release.Namespace }} -l app={{ include "csi-xen-orchestra-driver.fullname" . }}-controller -c csi-xen-orchestra-driver
 
-```bash
-# Check if secret exists
-kubectl get secret {{ .Values.xenOrchestra.secretName }} -n {{ .Values.xenOrchestra.secretNamespace | default .Release.Namespace }}
+For more help, see the documentation at:
+https://github.com/m4rcsi/csi-xen-orchestra-driver/tree/main/docs
 
-# Verify secret contents (be careful with sensitive data)
-kubectl describe secret {{ .Values.xenOrchestra.secretName }} -n {{ .Values.xenOrchestra.secretNamespace | default .Release.Namespace }}
-```
-
-### 3. Create Storage Classes
-
-After the driver is running, you can create StorageClass resources. Examples are available in the repository:
-
-```bash
-# Example for local storage
-kubectl apply -f https://raw.githubusercontent.com/m4rcsi/csi-xen-orchestra-driver/main/examples/sc-local.yaml
-
-# Example for shared storage
-kubectl apply -f https://raw.githubusercontent.com/m4rcsi/csi-xen-orchestra-driver/main/examples/sc-shared.yaml
-```
-
-### 4. Test the Driver
-
-Create a test PVC to verify the driver is working:
-
-```bash
-# Create test PVC
-kubectl apply -f https://raw.githubusercontent.com/m4rcsi/csi-xen-orchestra-driver/main/examples/dynamic/pvc.yaml
-
-# Check PVC status
-kubectl get pvc
-
-# Create test pod
-kubectl apply -f https://raw.githubusercontent.com/m4rcsi/csi-xen-orchestra-driver/main/examples/dynamic/pod.yaml
-```
-
-## Troubleshooting
-
-If you encounter issues:
-
-1. **Check driver logs:**
-   ```bash
-   kubectl logs -n {{ .Release.Namespace }} -l app={{ include "csi-xen-orchestra-driver.fullname" . }}-controller -c csi-xen-orchestra-driver
-   ```
-
-2. **Verify Xen Orchestra connectivity:**
-   - Ensure the Xen Orchestra URL is accessible from the Kubernetes cluster
-   - Verify the API token has sufficient permissions
-
-3. **Check RBAC:**
-   ```bash
-   kubectl get clusterrolebinding {{ include "csi-xen-orchestra-driver.fullname" . }}-binding
-   kubectl get clusterrole {{ include "csi-xen-orchestra-driver.fullname" . }}-role
-   ```
-
-## Documentation
-
-For more information, see:
-- [Driver Configuration](https://github.com/m4rcsi/csi-xen-orchestra-driver/blob/main/docs/driver-configuration.md)
-- [Getting Started](https://github.com/m4rcsi/csi-xen-orchestra-driver/blob/main/docs/getting-started.md)
-- [Storage Classes](https://github.com/m4rcsi/csi-xen-orchestra-driver/blob/main/docs/storage-class.md)
-
-## Support
-
-For issues and questions:
-- GitHub Issues: [csi-xen-orchestra-driver](https://github.com/m4rcsi/csi-xen-orchestra-driver)
-- Documentation: [docs/](https://github.com/m4rcsi/csi-xen-orchestra-driver/tree/main/docs)

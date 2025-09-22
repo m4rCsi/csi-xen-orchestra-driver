@@ -2,16 +2,10 @@
 
 This Helm chart deploys the CSI Xen Orchestra Driver, a Container Storage Interface driver for Xen Orchestra that enables dynamic provisioning and management of storage volumes in Kubernetes.
 
-## Prerequisites
+- GitHub Issues: [csi-xen-orchestra-driver](https://github.com/m4rcsi/csi-xen-orchestra-driver)
+- Documentation: [docs/](https://github.com/m4rcsi/csi-xen-orchestra-driver/tree/main/docs)
 
-- Kubernetes 1.19+
-- Helm 3.0+
-- Xen Orchestra instance accessible from the Kubernetes cluster
-- Xen Orchestra API token with appropriate permissions
-
-## Quick Start
-
-### 1. Install the chart
+## Install
 
 You have two options:
 
@@ -36,16 +30,6 @@ kubectl create secret generic csi-xen-orchestra-credentials \
 helm install csi-xen-orchestra oci://ghcr.io/m4rcsi/charts/csi-xen-orchestra-driver \
   --namespace kube-system 
 ```
-
-**Adding resource limits**: If you want to set resource limits, you can use the provided resources file with either option above:
-
-```bash
-# Download the chart to get the resources file
-helm pull oci://ghcr.io/m4rcsi/charts/csi-xen-orchestra-driver --untar
-cat csi-xen-orchestra-driver/values-resources.yaml
-```
-
-Adjust the resources as you see fit in your environment and use with `-f csi-xen-orchestra-driver/values-resources.yaml`
 
 ## Configuration
 
@@ -165,7 +149,7 @@ Adjust the resources as you see fit in your environment and use with `-f csi-xen
 
 ### Resource Limits
 
-The chart includes example configuration files to help you get started:
+The chart includes an example resource configuration file to help you get started:
 
 - **`values-resources.yaml`**: Recommended starting resources
   - Resource limits and requests for all containers
@@ -199,66 +183,3 @@ controller:
 ## Storage Classes
 
 After installing the driver, you can create StorageClass resources to use it. See the examples in the main repository for StorageClass configurations.
-
-## Troubleshooting
-
-### Check Driver Status
-
-```bash
-# Check if the CSIDriver is registered
-kubectl get csidriver csi.xen-orchestra.marcsi.ch
-
-# Check controller deployment
-kubectl get pods -n kube-system -l app=csi-xen-orchestra-driver-controller
-
-# Check node daemon set
-kubectl get pods -n kube-system -l app=csi-xen-orchestra-driver-node
-
-# Check driver logs
-kubectl logs -n kube-system -l app=csi-xen-orchestra-driver-controller -c csi-xen-orchestra-driver
-```
-
-### Check CSI Sidecar Status
-
-```bash
-# Check CSI Provisioner logs
-kubectl logs -n kube-system -l app=csi-xen-orchestra-driver-controller -c csi-provisioner
-
-# Check CSI Attacher logs
-kubectl logs -n kube-system -l app=csi-xen-orchestra-driver-controller -c csi-attacher
-
-# Check CSI Resizer logs
-kubectl logs -n kube-system -l app=csi-xen-orchestra-driver-controller -c csi-resizer
-
-# Check Node Driver Registrar logs
-kubectl logs -n kube-system -l app=csi-xen-orchestra-driver-node -c csi-driver-registrar
-```
-
-### Common Issues
-
-1. **Authentication failures**: Verify the Xen Orchestra credentials in the secret
-2. **Driver not registering**: Check if the node daemon set is running on all nodes
-3. **Volume provisioning failures**: Check controller logs for detailed error messages
-4. **Permission denied errors**: Verify RBAC resources are created and service account has proper permissions
-5. **Image pull failures**: Check image pull secrets and registry access
-
-## Upgrading
-
-```bash
-helm upgrade csi-xen-orchestra oci://ghcr.io/m4rcsi/charts/csi-xen-orchestra-driver \
-  --namespace kube-system
-```
-
-
-## Uninstalling
-
-```bash
-helm uninstall csi-xen-orchestra -n kube-system
-# and delete manually created secret (if applicable)
-```
-
-## Support
-
-For issues and questions:
-- GitHub Issues: [csi-xen-orchestra-driver](https://github.com/m4rcsi/csi-xen-orchestra-driver)
-- Documentation: [docs/](https://github.com/m4rcsi/csi-xen-orchestra-driver/tree/main/docs)
