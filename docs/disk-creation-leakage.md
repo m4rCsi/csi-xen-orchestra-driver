@@ -100,30 +100,18 @@ If your environment has slow disk creation in Xen Orchestra, increase the CSI si
 - Incase the timeout of the calls to xoa as well for `csi-xen-orchestra-driver` container with flag `--xoa-timeout`.
 
 
-In `deploy/kustomize/base/controller-deployment.yaml`, the defaults are set to `300s`. You can override them in your overlay. Example Kustomize strategic merge patch:
+In the Helm chart, the defaults are set to `300s`. You can override them using Helm values. Example configuration:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: csi-xen-orchestra-controller
-  namespace: kube-system
-spec:
-  template:
-    spec:
-      containers:
-      - name: csi-provisioner
-        args:
-        ...
-        - --timeout=600s   # increase to 10 minutes
-        ...
-      - name: csi-xen-orchestra-driver
-        args:
-        ...
-        - --xoa-timeout=600s   # increase to 10 minutes
-        ...
- 
+# values.yaml
+controller:
+  csiProvisioner:
+    timeout: "600s"  # increase to 10 minutes
+csiXenOrchestraDriver:
+  config:
+    xoaTimeout: "600s"  # increase to 10 minutes
 ```
+
 
 Notes:
 - Choose a value that comfortably exceeds your slowest observed XO disk creation time.

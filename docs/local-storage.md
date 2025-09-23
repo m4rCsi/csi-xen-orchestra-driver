@@ -34,13 +34,13 @@ There are two ways to work with local storage:
 ## Enabling Host-Level Topology
 
 
-
 Configure the driver to use host-level topology by setting the appropriate topology mode:
 
 ```yaml
-# In your driver deployment configuration, both the node Daemonset and the controller Deployment.
-args:
-  - "--host-topology=true"  # Use host-level topology instead of pool-level
+# In your Helm values.yaml
+csiXenOrchestraDriver:
+  config:
+    hostTopology: true  # Use host-level topology instead of pool-level
 ```
 
 This enables:
