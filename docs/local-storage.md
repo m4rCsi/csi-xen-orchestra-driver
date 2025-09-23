@@ -2,11 +2,8 @@
 
 Local Storage Repositories (SRs) in XCP-ng are storage pools that are accessible only from a specific hypervisor (host). This creates unique challenges and considerations when using them with Kubernetes and this CSI driver.
 
-## How Local Storage Works in XCP-ng
-
+> [!NOTE]
 > See [XCP-ng Documentation: Storage in XCP-ng](https://docs.xcp-ng.org/storage/) for details about how Storage works in XCP-ng.
-
-In XCP-ng, local SRs are **host-scoped**: Only accessible from the hypervisor where they are physically located.
 
 ## Topology Scoping Challenges
 

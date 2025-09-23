@@ -23,7 +23,7 @@ provisioner: csi.xen-orchestra.marcsi.ch
 parameters:
   csi.storage.k8s.io/fstype: ext4
   srUUID: <sr-uuid>
-volumeBindingMode: Immediate   # or WaitForFirstConsumer, see notes below
+volumeBindingMode: Immediate   # or WaitForFirstConsumer
 allowVolumeExpansion: true
 ```
 
@@ -46,7 +46,7 @@ parameters:
   csi.storage.k8s.io/fstype: ext4
   srsWithTag: k8s-general
   # migrating: "true"    # optional; allows attach-time migration between tagged SRs
-volumeBindingMode: WaitForFirstConsumer   # good default for local; Immediate is fine for shared
+volumeBindingMode: WaitForFirstConsumer  # or Immediate
 allowVolumeExpansion: true
 ```
 
