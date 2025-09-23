@@ -48,9 +48,13 @@ helm install csi-xen-orchestra oci://ghcr.io/m4rcsi/charts/csi-xen-orchestra-dri
 |-----------|-------------|---------|
 | `controller.enabled` | Whether to enable the controller deployment | `true` |
 | `controller.replicas` | Number of controller replicas | `1` |
+| `controller.annotations` | Annotations to add to the controller deployment | `{}` |
+| `controller.labels` | Labels to add to the controller deployment | `{}` |
 | `controller.nodeSelector` | Node selector for controller pods | `{}` |
 | `controller.tolerations` | Tolerations for controller pods | `[]` |
 | `controller.affinity` | Affinity for controller pods | `{}` |
+| `controller.podSecurityContext` | Pod security context for controller pods | `{}` |
+| `controller.securityContext` | Container security context for controller containers | `{}` |
 | `controller.resources` | Resource requests/limits for controller containers | `{}` |
 
 #### CSI Sidecar Configuration
@@ -98,9 +102,12 @@ helm install csi-xen-orchestra oci://ghcr.io/m4rcsi/charts/csi-xen-orchestra-dri
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `node.enabled` | Whether to enable the node daemon set | `true` |
+| `node.annotations` | Annotations to add to the node daemon set | `{}` |
+| `node.labels` | Labels to add to the node daemon set | `{}` |
 | `node.nodeSelector` | Node selector for node pods | `{}` |
 | `node.tolerations` | Tolerations for node pods | `[]` |
 | `node.affinity` | Affinity for node pods | `{}` |
+| `node.podSecurityContext` | Pod security context for node pods | `{}` |
 | `node.resources` | Resource requests/limits for node containers | `{}` |
 
 #### CSI Node Driver Registrar
