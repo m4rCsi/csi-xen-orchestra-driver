@@ -1,6 +1,6 @@
 SHELL = bash
 
-K8S_TEST_VERSION ?= v1.30.1
+K8S_TEST_VERSION ?= v1.34.0
 GINKGO = bin/ginkgo
 E2E = bin/e2e.test
 

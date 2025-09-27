@@ -18,19 +18,22 @@ CSI Driver for Xen-orchestra-managed xcp-ng environments.
 
 ## Requirements
 - [Xen Orchestra (XO)](https://docs.xcp-ng.org/management/manage-at-scale/xo-web-ui/)
-- Kubernetes Cluster:
+- Kubernetes Cluster (1.30+):
     - with [xenorchestra-cloud-controller-manager](https://github.com/vatesfr/xenorchestra-cloud-controller-manager/tree/main)
 - Kubernetes Nodes: 
   - with `xe-guest-utils` installed
 
 ## Compatibility
 
-Expecting much broader compatibility, but for now only tested on 1.30 (with Talos).
+The CSI driver has been tested with the following versions:
 
-| Driver | Kubernetes |
-| --- | --- |
-| v0.2.x | 1.30 (tested) |
-| v0.1.x | 1.30 (tested) |
+| Driver Version | Kubernetes Versions | Xen Orchestra Versions |
+| --- | --- | --- |
+| v0.2.x | 1.30+ (tested up to 1.34) | 5.106.2+ |
+| v0.1.x | 1.30 | 5.106.2+ |
+
+> [!NOTE]
+> While tested with Talos, the driver should be compatible with other Kubernetes distributions. If you encounter issues with other distributions, please report them.
 
 ## Features
 - Dynamic provisioning (create disks on demand via PVCs)
