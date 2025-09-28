@@ -96,7 +96,7 @@ func (c *jsonRPCClient) connect(ctx context.Context) error {
 	wsConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
 		if wsConn != nil {
-			wsConn.Close()
+			_ = wsConn.Close()
 		}
 		return fmt.Errorf("%w: failed to connect to WebSocket: %w", ErrConnectionError, err)
 	}
@@ -144,7 +144,7 @@ func (c *jsonRPCClient) closeConnection() {
 		return
 	}
 
-	c.conn.Close()
+	_ = c.conn.Close()
 	c.conn = nil
 }
 
