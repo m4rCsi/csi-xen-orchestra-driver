@@ -48,7 +48,7 @@ func NewJSONRPCClient(config ClientConfig) (*jsonRPCClient, error) {
 
 	// Set default values
 	if config.Timeout == 0 {
-		config.Timeout = 30 * time.Second
+		config.Timeout = 300 * time.Second
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -119,8 +119,11 @@ func (c *jsonRPCClient) Close() error {
 
 // Call makes a JSON-RPC call and waits for the response
 func (c *jsonRPCClient) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	callctx, cancel := context.WithTimeout(ctx, c.config.Timeout)
+	defer cancel()
+
 	var result json.RawMessage
-	err := c.conn.Call(ctx, method, params, &result)
+	err := c.conn.Call(callctx, method, params, &result)
 	if err != nil {
 		switch err := err.(type) {
 		case *jsonrpc2.Error:

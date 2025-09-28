@@ -23,7 +23,7 @@ import (
 type ClientConfig struct {
 	BaseURL string
 	Token   string
-	Timeout time.Duration
+	Timeout time.Duration // Timeout for API calls
 }
 
 // Client defines the interface for Xen Orchestra API operations
