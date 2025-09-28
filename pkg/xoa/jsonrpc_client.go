@@ -17,8 +17,10 @@ package xoa
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -32,9 +34,12 @@ type jsonRPCClient struct {
 	baseURL string
 	token   string
 	config  ClientConfig
+
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	connMtx sync.Mutex
 	conn    *jsonrpc2.Conn
-	ctx     context.Context
-	cancel  context.CancelFunc
 }
 
 // NewClient creates a new Xen Orchestra WebSocket JSON-RPC client
@@ -59,17 +64,25 @@ func NewJSONRPCClient(config ClientConfig) (*jsonRPCClient, error) {
 		config:  config,
 		ctx:     ctx,
 		cancel:  cancel,
+		conn:    nil,
 	}
 	return client, nil
 }
 
-// Connect establishes a WebSocket connection to the Xen Orchestra API
+// Connect establishes a jsonrpc2 connection to the Xen Orchestra API
 func (c *jsonRPCClient) Connect(ctx context.Context) error {
-	log := klog.FromContext(ctx)
+	c.connMtx.Lock()
+	defer c.connMtx.Unlock()
 
+	return c.connect(ctx)
+}
+
+func (c *jsonRPCClient) connect(ctx context.Context) error {
 	if c.conn != nil {
-		return ErrAlreadyConnected
+		return nil
 	}
+
+	log := klog.FromContext(ctx)
 
 	// Convert HTTP URL to WebSocket URL
 	wsURL, err := c.getWebSocketURL()
@@ -82,21 +95,39 @@ func (c *jsonRPCClient) Connect(ctx context.Context) error {
 	// Create WebSocket connection
 	wsConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
+		if wsConn != nil {
+			wsConn.Close()
+		}
 		return fmt.Errorf("%w: failed to connect to WebSocket: %w", ErrConnectionError, err)
 	}
 
 	objectStream := jsonrpc2websocket.NewObjectStream(wsConn)
-
 	conn := jsonrpc2.NewConn(ctx, objectStream, c)
-	c.conn = conn
 
 	// Authenticate the session
-	if err := c.authenticate(ctx); err != nil {
-		_ = c.Close() // Ensure connection is closed on auth failure
+	if err := c.authenticate(ctx, conn); err != nil {
+		_ = conn.Close() // Ensure connection is closed on auth failure
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 
+	c.conn = conn
+
 	log.V(4).Info("Successfully connected and authenticated to Xen Orchestra WebSocket API")
+	return nil
+}
+
+// authenticate performs authentication with the server
+func (c *jsonRPCClient) authenticate(ctx context.Context, conn *jsonrpc2.Conn) error {
+	log := klog.FromContext(ctx)
+	log.V(4).Info("Authenticating session with token...")
+	_, err := callRaw(ctx, conn, "session.signInWithToken", map[string]any{
+		"token": c.token,
+	})
+	if err != nil {
+		return fmt.Errorf("session.signInWithToken failed: %w", err)
+	}
+
+	log.V(4).Info("Session successfully authenticated")
 	return nil
 }
 
@@ -105,25 +136,89 @@ func (h *jsonRPCClient) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *js
 	// If we don't set a handler, we get a SegFault from the library
 }
 
-// Close closes the WebSocket connection
-func (c *jsonRPCClient) Close() error {
+func (c *jsonRPCClient) closeConnection() {
+	c.connMtx.Lock()
+	defer c.connMtx.Unlock()
+
 	if c.conn == nil {
-		return nil
+		return
 	}
 
-	c.cancel()
-	err := c.conn.Close()
+	c.conn.Close()
 	c.conn = nil
-	return err
 }
 
-// Call makes a JSON-RPC call and waits for the response
-func (c *jsonRPCClient) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+// Close closes the jsonrpc2 connection
+func (c *jsonRPCClient) Close() error {
+	c.cancel()
+	c.closeConnection()
+	return nil
+}
+
+// ensureConnection ensures that the jsonrpc2 connection is established
+// if it is not established, it will be established
+func (c *jsonRPCClient) ensureConnection(ctx context.Context) error {
+	c.connMtx.Lock()
+	defer c.connMtx.Unlock()
+
+	// Already connected, nothing to do
+	if c.conn != nil {
+		return nil
+	}
+	return c.connect(ctx)
+}
+
+// callWithTimeout makes a JSON-RPC call with timeout
+func (c *jsonRPCClient) callWithTimeout(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	callctx, cancel := context.WithTimeout(ctx, c.config.Timeout)
 	defer cancel()
+	return callRaw(callctx, c.conn, method, params)
+}
 
+// call makes a JSON-RPC call and waits for the response
+// if the connection is closed, it will attempt to reconnect once
+func (c *jsonRPCClient) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	log := klog.FromContext(ctx)
+
+	// Ensure we have a connection
+	err := c.ensureConnection(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Make the call
+	result, err := c.callWithTimeout(ctx, method, params)
+	if err == nil {
+		return result, nil
+	}
+
+	// If connection is closed, try to reconnect once and retry the call
+	if errors.Is(err, jsonrpc2.ErrClosed) {
+		log.V(4).Info("Connection closed, attempting to reconnect...")
+		c.closeConnection()
+
+		// Try to reconnect
+		err = c.ensureConnection(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to reconnect: %w", err)
+		}
+
+		// Retry the call
+		result, err := c.callWithTimeout(ctx, method, params)
+		if err != nil {
+			return nil, fmt.Errorf("call failed after reconnection: %w", err)
+		}
+		return result, nil
+	}
+
+	// For any other error, return it directly
+	return nil, err
+}
+
+// callRaw calls a raw jsonrpc2 method and converts the error
+func callRaw(ctx context.Context, conn *jsonrpc2.Conn, method string, params any) (json.RawMessage, error) {
 	var result json.RawMessage
-	err := c.conn.Call(callctx, method, params, &result)
+	err := conn.Call(ctx, method, params, &result)
 	if err != nil {
 		switch err := err.(type) {
 		case *jsonrpc2.Error:
@@ -154,21 +249,6 @@ func (c *jsonRPCClient) getWebSocketURL() (string, error) {
 
 	// Authentication is now done via cookie in the handshake.
 	return parsedURL.String(), nil
-}
-
-// authenticate performs authentication with the server
-func (c *jsonRPCClient) authenticate(ctx context.Context) error {
-	log := klog.FromContext(ctx)
-	log.V(4).Info("Authenticating session with token...")
-	_, err := c.call(ctx, "session.signInWithToken", map[string]any{
-		"token": c.token,
-	})
-	if err != nil {
-		return fmt.Errorf("session.signInWithToken failed: %w", err)
-	}
-
-	log.V(4).Info("Session successfully authenticated")
-	return nil
 }
 
 // GetVMs retrieves all virtual machines

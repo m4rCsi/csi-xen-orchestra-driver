@@ -26,7 +26,6 @@ var (
 	// Connection errors
 	ErrConnectionError      = errors.New("connection error")
 	ErrInvalidArgument      = errors.New("invalid argument")
-	ErrAlreadyConnected     = errors.New("already connected")
 	ErrUnmarshalError       = errors.New("unmarshalling error")
 	ErrNotImplemented       = errors.New("not implemented (client)")
 	ErrMultipleObjectsFound = errors.New("multiple objects found")
