@@ -21,11 +21,9 @@ import (
 
 func TestNewClient(t *testing.T) {
 	config := ClientConfig{
-		BaseURL:    "https://xo.company.lan",
-		Token:      "test-token",
-		Timeout:    30 * time.Second,
-		RetryCount: 3,
-		RetryWait:  1 * time.Second,
+		BaseURL: "https://xo.company.lan",
+		Token:   "test-token",
+		Timeout: 30 * time.Second,
 	}
 
 	client, err := NewJSONRPCClient(config)

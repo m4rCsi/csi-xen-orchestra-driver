@@ -18,14 +18,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/sourcegraph/jsonrpc2"
 )
 
 var (
 	// Connection errors
-	ErrContextCancelled     = errors.New("context cancelled")
 	ErrConnectionError      = errors.New("connection error")
 	ErrInvalidArgument      = errors.New("invalid argument")
-	ErrAlreadyConnected     = errors.New("already connected")
 	ErrUnmarshalError       = errors.New("unmarshalling error")
 	ErrNotImplemented       = errors.New("not implemented (client)")
 	ErrMultipleObjectsFound = errors.New("multiple objects found")
@@ -36,7 +36,7 @@ var (
 )
 
 // ConvertJSONRPCError converts an JSONRPCError to a specific error type based on the code
-func ConvertJSONRPCError(apiErr *jsonRPCError) error {
+func ConvertJSONRPCError(apiErr *jsonrpc2.Error) error {
 	if specificErr, exists := errorCodeMap[apiErr.Code]; exists {
 		return fmt.Errorf("%w: %s", specificErr, apiErr.Message)
 	}
@@ -100,7 +100,7 @@ var (
 )
 
 // errorCodeMap maps error codes to their corresponding error types
-var errorCodeMap = map[int]error{
+var errorCodeMap = map[int64]error{
 	// General errors
 	0:  ErrNotImplementedOnServer,
 	1:  ErrNoSuchObject,
