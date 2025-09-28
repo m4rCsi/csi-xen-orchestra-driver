@@ -317,7 +317,7 @@ func (cs *ControllerService) ControllerUnpublishVolume(ctx context.Context, req 
 		} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
 			return nil, status.Errorf(codes.Unavailable, "multiple VDIs found with same name, likely migration in progress, please try again later")
 		} else if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get VDI: %v", err)
+			return nil, translateXOAErrorToCSI(err, "failed to get VDI")
 		}
 		vdiUUID = vdi.UUID
 	case UUIDAsVolumeID:
@@ -331,14 +331,14 @@ func (cs *ControllerService) ControllerUnpublishVolume(ctx context.Context, req 
 	if vmUUID == "" {
 		allvbds, err := cs.xoaClient.GetVBDsByVDI(ctx, vdiUUID)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get VBDs: %v", err)
+			return nil, translateXOAErrorToCSI(err, "failed to get VBDs")
 		}
 
 		vbds = allvbds
 	} else {
 		attachedVBDs, err := cs.xoaClient.GetVBDsByVMAndVDI(ctx, vmUUID, vdiUUID)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get VBDs: %v", err)
+			return nil, translateXOAErrorToCSI(err, "failed to get VBDs")
 		}
 		vbds = attachedVBDs
 	}
@@ -350,7 +350,7 @@ func (cs *ControllerService) ControllerUnpublishVolume(ctx context.Context, req 
 		} else if errors.Is(err, xoa.ErrOperationNotAllowed) {
 			return nil, status.Errorf(codes.FailedPrecondition, "operation not allowed: %v", err)
 		} else if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to delete VBD: %v", err)
+			return nil, translateXOAErrorToCSI(err, "failed to delete VBD")
 		}
 	}
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
@@ -371,7 +371,7 @@ func (cs *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req
 		} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
 			return nil, status.Errorf(codes.Unavailable, "multiple VDIs found with same name, likely migration in progress, please try again later")
 		} else if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
+			return nil, translateXOAErrorToCSI(err, "failed to get volume")
 		}
 	case UUIDAsVolumeID:
 		vdiUUID := volumeIDValue
@@ -379,7 +379,7 @@ func (cs *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req
 		if errors.Is(err, xoa.ErrObjectNotFound) {
 			return nil, status.Errorf(codes.NotFound, "volume not found")
 		} else if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
+			return nil, translateXOAErrorToCSI(err, "failed to get volume")
 		}
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume ID type")
@@ -418,7 +418,7 @@ func (cs *ControllerService) ControllerExpandVolume(ctx context.Context, req *cs
 		} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
 			return nil, status.Errorf(codes.Unavailable, "multiple VDIs found with same name, likely migration in progress, please try again later")
 		} else if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
+			return nil, translateXOAErrorToCSI(err, "failed to get volume")
 		}
 		vdi = foundVdi
 	case UUIDAsVolumeID:
@@ -427,7 +427,7 @@ func (cs *ControllerService) ControllerExpandVolume(ctx context.Context, req *cs
 		if errors.Is(err, xoa.ErrObjectNotFound) {
 			return nil, status.Errorf(codes.NotFound, "volume not found")
 		} else if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
+			return nil, translateXOAErrorToCSI(err, "failed to get volume")
 		}
 		vdi = foundVdi
 	default:
@@ -462,9 +462,8 @@ func (cs *ControllerService) ControllerExpandVolume(ctx context.Context, req *cs
 	err = cs.xoaClient.ResizeVDI(ctx, vdi.UUID, newCapacity)
 	if errors.Is(err, xoa.ErrVDIInUse) {
 		return nil, status.Errorf(codes.FailedPrecondition, "volume is in use")
-	}
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to resize volume: %v", err)
+	} else if err != nil {
+		return nil, translateXOAErrorToCSI(err, "failed to resize volume")
 	}
 
 	return &csi.ControllerExpandVolumeResponse{
@@ -487,14 +486,14 @@ func (cs *ControllerService) ControllerGetVolume(ctx context.Context, req *csi.C
 		diskName := cs.diskNameGenerator.FromVolumeName(volumeIDValue)
 		foundVdi, err := cs.xoaClient.GetVDIByName(ctx, diskName)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
+			return nil, translateXOAErrorToCSI(err, "failed to get volume")
 		}
 		vdi = foundVdi
 	case UUIDAsVolumeID:
 		vdiUUID := volumeIDValue
 		foundVdi, err := cs.xoaClient.GetVDIByUUID(ctx, vdiUUID)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
+			return nil, translateXOAErrorToCSI(err, "failed to get volume")
 		}
 		vdi = foundVdi
 	}
@@ -587,10 +586,11 @@ func (cs *ControllerService) createDisk(ctx context.Context, storageSelection *s
 	} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
 		foundTemporaryVDI, err = cs.getOneDiskAndDeleteRest(ctx, temporaryDiskName)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get one disk and delete rest: %v", err)
+			// already CSI error
+			return nil, err
 		}
 	} else if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
+		return nil, translateXOAErrorToCSI(err, "failed to get volume")
 	}
 
 	pickedSR, err := storageSelection.pickSRForTopology(capacity, topologyRequirement)
@@ -601,7 +601,7 @@ func (cs *ControllerService) createDisk(ctx context.Context, storageSelection *s
 	if foundTemporaryVDI == nil {
 		vdicreatedUUID, err := cs.xoaClient.CreateVDI(ctx, temporaryDiskName, pickedSR.UUID, capacity)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to create disk: %v", err)
+			return nil, translateXOAErrorToCSI(err, "failed to create disk")
 		}
 		vdiUUID = vdicreatedUUID
 		log.Info("Successfully created disk", "diskName", temporaryDiskName, "vdiUUID", vdiUUID)
@@ -611,12 +611,12 @@ func (cs *ControllerService) createDisk(ctx context.Context, storageSelection *s
 
 	err = cs.xoaClient.EditVDI(ctx, vdiUUID, ptr.To(diskName), ptr.To(""))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to edit disk: %v", err)
+		return nil, translateXOAErrorToCSI(err, "failed to edit disk")
 	}
 
 	createdVDI, err := cs.xoaClient.GetVDIByUUID(ctx, vdiUUID)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get created VDI: %v", err)
+		return nil, translateXOAErrorToCSI(err, "failed to get created VDI")
 	}
 	return createdVDI, nil
 }
@@ -640,7 +640,7 @@ func (cs *ControllerService) findDisk(ctx context.Context, volumeID string) (*xo
 			// This may happen if the VDI is being migrated
 			return nil, nil, status.Errorf(codes.Unavailable, "multiple VDIs found with same name, likely migration in progress, please try again later")
 		} else if err != nil {
-			return nil, nil, status.Errorf(codes.Internal, "failed to get VDI: %v", err)
+			return nil, nil, translateXOAErrorToCSI(err, "failed to get VDI")
 		}
 		vdi = foundVdi
 
@@ -650,7 +650,7 @@ func (cs *ControllerService) findDisk(ctx context.Context, volumeID string) (*xo
 		if errors.Is(err, xoa.ErrObjectNotFound) {
 			return nil, nil, status.Errorf(codes.NotFound, "VDI not found")
 		} else if err != nil {
-			return nil, nil, status.Errorf(codes.Internal, "failed to get VDI: %v", err)
+			return nil, nil, translateXOAErrorToCSI(err, "failed to get VDI")
 		}
 		vdi = foundVdi
 	default:
@@ -676,7 +676,7 @@ func (cs *ControllerService) findDisk(ctx context.Context, volumeID string) (*xo
 			m.Migrating.EndMigration()
 			err = cs.xoaClient.EditVDI(ctx, vdi.UUID, nil, ptr.To(m.ToVDIDescription()))
 			if err != nil {
-				return nil, nil, status.Errorf(codes.Internal, "failed to set VDI description: %v", err)
+				return nil, nil, translateXOAErrorToCSI(err, "failed to set VDI description")
 			}
 			log.Info("VDI finished migration", "vdiUUID", vdi.UUID, "targetSRUUID", targetSRUUID)
 		}
@@ -711,7 +711,7 @@ func (cs *ControllerService) checkDiskAttachment(ctx context.Context, vdi *xoa.V
 
 	vbds, err := cs.xoaClient.GetVBDsByVMAndVDI(ctx, vm.UUID, vdi.UUID)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get VBDs: %v", err)
+		return nil, translateXOAErrorToCSI(err, "failed to get VBDs")
 	}
 
 	var selectedVBD *xoa.VBD = nil
@@ -804,6 +804,8 @@ func (cs *ControllerService) migrateVDI(ctx context.Context, vdi *xoa.VDI, vm *x
 	return foundVdi, pickedSR, nil
 }
 
+// getOneDiskAndDeleteRest: Get one disk with the given name and delete the rest
+// returns CSI errors
 func (cs *ControllerService) getOneDiskAndDeleteRest(ctx context.Context, name string) (*xoa.VDI, error) {
 	log, ctx := LogAndExpandContext(ctx, "action", "getOneDiskAndDeleteRest", "name", name)
 	vdis, err := cs.xoaClient.GetVDIs(ctx, map[string]any{
