@@ -9,6 +9,7 @@ require (
 	github.com/kubernetes-csi/csi-test/v5 v5.3.1
 	github.com/onsi/ginkgo/v2 v2.21.0
 	github.com/onsi/gomega v1.35.1
+	github.com/sourcegraph/jsonrpc2 v0.2.1
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/grpc v1.73.0
 	k8s.io/apimachinery v0.33.3
