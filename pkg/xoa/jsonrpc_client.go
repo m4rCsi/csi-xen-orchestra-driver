@@ -19,47 +19,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/sourcegraph/jsonrpc2"
+	jsonrpc2websocket "github.com/sourcegraph/jsonrpc2/websocket"
 	"k8s.io/klog/v2"
 )
 
 // apiClient represents a Xen Orchestra WebSocket JSON-RPC client
 type jsonRPCClient struct {
-	baseURL   string
-	token     string
-	config    ClientConfig
-	conn      *websocket.Conn
-	mu        sync.Mutex
-	nextID    int64
-	callbacks map[int64]chan *jsonRPCResponse
-	ctx       context.Context
-	cancel    context.CancelFunc
-}
-
-// JSONRPCRequest represents a JSON-RPC request
-type jsonRPCRequest struct {
-	JSONRPC string `json:"jsonrpc"`
-	Method  string `json:"method"`
-	Params  any    `json:"params,omitempty"`
-	ID      int64  `json:"id"`
-}
-
-// JSONRPCResponse represents a JSON-RPC response
-type jsonRPCResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *jsonRPCError   `json:"error,omitempty"`
-	ID      int64           `json:"id"`
-}
-
-// JSONRPCError represents a JSON-RPC error
-type jsonRPCError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Data    any    `json:"data,omitempty"`
+	baseURL string
+	token   string
+	config  ClientConfig
+	conn    *jsonrpc2.Conn
+	ctx     context.Context
+	cancel  context.CancelFunc
 }
 
 // NewClient creates a new Xen Orchestra WebSocket JSON-RPC client
@@ -75,22 +50,15 @@ func NewJSONRPCClient(config ClientConfig) (*jsonRPCClient, error) {
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Second
 	}
-	if config.RetryCount == 0 {
-		config.RetryCount = 3
-	}
-	if config.RetryWait == 0 {
-		config.RetryWait = 1 * time.Second
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	client := &jsonRPCClient{
-		baseURL:   config.BaseURL,
-		token:     config.Token,
-		config:    config,
-		callbacks: make(map[int64]chan *jsonRPCResponse),
-		ctx:       ctx,
-		cancel:    cancel,
+		baseURL: config.BaseURL,
+		token:   config.Token,
+		config:  config,
+		ctx:     ctx,
+		cancel:  cancel,
 	}
 	return client, nil
 }
@@ -98,35 +66,29 @@ func NewJSONRPCClient(config ClientConfig) (*jsonRPCClient, error) {
 // Connect establishes a WebSocket connection to the Xen Orchestra API
 func (c *jsonRPCClient) Connect(ctx context.Context) error {
 	log := klog.FromContext(ctx)
-	c.mu.Lock()
 
 	if c.conn != nil {
-		c.mu.Unlock()
 		return ErrAlreadyConnected
 	}
 
 	// Convert HTTP URL to WebSocket URL
 	wsURL, err := c.getWebSocketURL()
 	if err != nil {
-		c.mu.Unlock()
 		return fmt.Errorf("%w: failed to create WebSocket URL: %w", ErrConnectionError, err)
 	}
 
 	log.V(4).Info("Connecting to WebSocket", "wsURL", wsURL)
 
 	// Create WebSocket connection
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	wsConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
-		c.mu.Unlock()
 		return fmt.Errorf("%w: failed to connect to WebSocket: %w", ErrConnectionError, err)
 	}
 
+	objectStream := jsonrpc2websocket.NewObjectStream(wsConn)
+
+	conn := jsonrpc2.NewConn(ctx, objectStream, c)
 	c.conn = conn
-
-	// Start message handler
-	go c.handleMessages()
-
-	c.mu.Unlock() // Unlock before authenticating to prevent deadlock
 
 	// Authenticate the session
 	if err := c.authenticate(ctx); err != nil {
@@ -138,11 +100,13 @@ func (c *jsonRPCClient) Connect(ctx context.Context) error {
 	return nil
 }
 
+func (h *jsonRPCClient) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+	// We will get notifications from the server, but we don't need to handle them
+	// If we don't set a handler, we get a SegFault from the library
+}
+
 // Close closes the WebSocket connection
 func (c *jsonRPCClient) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.conn == nil {
 		return nil
 	}
@@ -155,53 +119,17 @@ func (c *jsonRPCClient) Close() error {
 
 // Call makes a JSON-RPC call and waits for the response
 func (c *jsonRPCClient) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
-	c.mu.Lock()
-	if c.conn == nil {
-		c.mu.Unlock()
-		return nil, fmt.Errorf("not connected: %w", ErrConnectionError)
-	}
-
-	id := c.nextID
-	c.nextID++
-	callback := make(chan *jsonRPCResponse, 1)
-	c.callbacks[id] = callback
-
-	defer func() {
-		c.mu.Lock()
-		delete(c.callbacks, id)
-		c.mu.Unlock()
-	}()
-
-	// Create request
-	request := &jsonRPCRequest{
-		JSONRPC: "2.0",
-		Method:  method,
-		Params:  params,
-		ID:      id,
-	}
-
-	// Send request - PROTECTED BY MUTEX
-	if err := c.conn.WriteJSON(request); err != nil {
-		c.mu.Unlock()
-		return nil, fmt.Errorf("failed to send request: %w", ErrConnectionError)
-	}
-
-	c.mu.Unlock()
-
-	// Wait for response
-	select {
-	case response := <-callback:
-		if response.Error != nil {
-			return nil, ConvertJSONRPCError(response.Error)
+	var result json.RawMessage
+	err := c.conn.Call(ctx, method, params, &result)
+	if err != nil {
+		switch err := err.(type) {
+		case *jsonrpc2.Error:
+			return nil, ConvertJSONRPCError(err)
+		default:
+			return nil, err
 		}
-		return response.Result, nil
-	case <-time.After(c.config.Timeout):
-		return nil, fmt.Errorf("request timeout: %w", ErrConnectionError)
-	case <-ctx.Done():
-		return nil, fmt.Errorf("context cancelled: %w", ErrContextCancelled)
-	case <-c.ctx.Done():
-		return nil, fmt.Errorf("client closed: %w", ErrConnectionError)
 	}
+	return result, nil
 }
 
 // getWebSocketURL converts the HTTP URL to a WebSocket URL
@@ -238,46 +166,6 @@ func (c *jsonRPCClient) authenticate(ctx context.Context) error {
 
 	log.V(4).Info("Session successfully authenticated")
 	return nil
-}
-
-// handleMessages handles incoming WebSocket messages
-func (c *jsonRPCClient) handleMessages() {
-	for {
-		select {
-		case <-c.ctx.Done():
-			return
-		default:
-			_, message, err := c.conn.ReadMessage()
-			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					klog.Errorf("WebSocket read error: %v", err)
-				}
-				return
-			}
-
-			var response jsonRPCResponse
-			if err := json.Unmarshal(message, &response); err != nil {
-				klog.Errorf("Failed to unmarshal JSON-RPC response: %v", err)
-				continue
-			}
-
-			// Handle response
-			c.mu.Lock()
-			if callback, exists := c.callbacks[response.ID]; exists {
-				select {
-				case callback <- &response:
-				default:
-					klog.Warningf("Callback channel full for ID %d", response.ID)
-				}
-			} else if response.ID == 0 {
-				// This is a notification, we can ignore it
-			} else {
-				klog.V(4).Infof("Received message for unknown ID %d: %s", response.ID, string(message))
-				// This is a response to a request that we didn't make, we can ignore it
-			}
-			c.mu.Unlock()
-		}
-	}
 }
 
 // GetVMs retrieves all virtual machines

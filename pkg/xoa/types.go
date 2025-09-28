@@ -21,11 +21,9 @@ import (
 
 // Config holds the configuration for the Xen Orchestra API client
 type ClientConfig struct {
-	BaseURL    string
-	Token      string
-	Timeout    time.Duration
-	RetryCount int
-	RetryWait  time.Duration
+	BaseURL string
+	Token   string
+	Timeout time.Duration
 }
 
 // Client defines the interface for Xen Orchestra API operations
