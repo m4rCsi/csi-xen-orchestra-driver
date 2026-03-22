@@ -39,8 +39,6 @@ type jsonRPCClient struct {
 
 	connMtx sync.Mutex
 	conn    *jsonrpc2.Conn
-
-	sessionToken string
 }
 
 // NewClient creates a new Xen Orchestra WebSocket JSON-RPC client

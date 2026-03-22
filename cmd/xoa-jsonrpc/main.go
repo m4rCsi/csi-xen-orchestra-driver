@@ -70,8 +70,8 @@ func main() {
 		}
 	}
 
-	var username string = os.Getenv("XOA_USERNAME")
-	var password string = os.Getenv("XOA_PASSWORD")
+	var username = os.Getenv("XOA_USERNAME")
+	var password = os.Getenv("XOA_PASSWORD")
 
 	if *token == "" && (username == "" || password == "") {
 		if *token = os.Getenv("XOA_TOKEN"); *token == "" {
