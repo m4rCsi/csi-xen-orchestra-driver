@@ -69,13 +69,12 @@ spec:
             mountPath: /var/lib/csi/sockets/pluginproxy/
         ports:
           - containerPort: 8080
-            name: http-endpoint
             protocol: TCP
         livenessProbe:
           failureThreshold: 1
           httpGet:
             path: /healthz/leader-election
-            port: http-endpoint
+            port: 8080
           initialDelaySeconds: 10
           timeoutSeconds: 10
           periodSeconds: 20
@@ -106,7 +105,6 @@ spec:
             mountPath: /var/lib/csi/sockets/pluginproxy/
         ports:
           - containerPort: 8081
-            name: http-endpoint
             protocol: TCP
         {{- with .Values.controller.csiAttacher.resources }}
         resources:
@@ -136,13 +134,12 @@ spec:
             mountPath: /var/lib/csi/sockets/pluginproxy/
         ports:
           - containerPort: 8082
-            name: http-endpoint
             protocol: TCP
         livenessProbe:
           failureThreshold: 1
           httpGet:
             path: /healthz/leader-election
-            port: http-endpoint
+            port: 8082
           initialDelaySeconds: 10
           timeoutSeconds: 10
           periodSeconds: 20
@@ -174,19 +171,12 @@ spec:
           {{- if .Values.controller.csiXenOrchestraDriver.verbosity }}
           - "--v={{ .Values.controller.csiXenOrchestraDriver.verbosity }}"
           {{- end }}
+        envFrom:
+          - secretRef:
+              name: {{ .Values.xenOrchestra.secretName }}
         env:
           - name: CSI_ENDPOINT
             value: unix:///var/lib/csi/sockets/pluginproxy/csi.socket
-          - name: XOA_URL
-            valueFrom:
-              secretKeyRef:
-                name: {{ .Values.xenOrchestra.secretName }}
-                key: url
-          - name: XOA_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: {{ .Values.xenOrchestra.secretName }}
-                key: token
         volumeMounts:
           - name: socket-dir
             mountPath: /var/lib/csi/sockets/pluginproxy/

@@ -637,6 +637,7 @@ func (cs *ControllerService) findDisk(ctx context.Context, volumeID string) (*xo
 		if errors.Is(err, xoa.ErrObjectNotFound) {
 			return nil, nil, status.Errorf(codes.NotFound, "VDI not found")
 		} else if errors.Is(err, xoa.ErrMultipleObjectsFound) {
+			// TODO: check the VDI descriptions to see if we are in a migration
 			// This may happen if the VDI is being migrated
 			return nil, nil, status.Errorf(codes.Unavailable, "multiple VDIs found with same name, likely migration in progress, please try again later")
 		} else if err != nil {

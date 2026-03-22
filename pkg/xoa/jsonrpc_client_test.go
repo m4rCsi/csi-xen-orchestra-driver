@@ -22,8 +22,8 @@ import (
 func TestNewClient(t *testing.T) {
 	config := ClientConfig{
 		BaseURL: "https://xo.company.lan",
-		Token:   "test-token",
 		Timeout: 30 * time.Second,
+		Token:   "test-token",
 	}
 
 	client, err := NewJSONRPCClient(config)
@@ -37,10 +37,6 @@ func TestNewClient(t *testing.T) {
 
 	if client.baseURL != config.BaseURL {
 		t.Errorf("Expected baseURL %s, got %s", config.BaseURL, client.baseURL)
-	}
-
-	if client.token != config.Token {
-		t.Errorf("Expected token %s, got %s", config.Token, client.token)
 	}
 }
 
@@ -69,7 +65,9 @@ func TestNewClientValidation(t *testing.T) {
 func TestGetWebSocketURL(t *testing.T) {
 	client := &jsonRPCClient{
 		baseURL: "https://xo.company.lan",
-		token:   "test-token",
+		config: ClientConfig{
+			Token: "test-token",
+		},
 	}
 
 	wsURL, err := client.getWebSocketURL()
@@ -86,7 +84,9 @@ func TestGetWebSocketURL(t *testing.T) {
 func TestGetWebSocketURLHTTP(t *testing.T) {
 	client := &jsonRPCClient{
 		baseURL: "http://xo.company.lan",
-		token:   "test-token",
+		config: ClientConfig{
+			Token: "test-token",
+		},
 	}
 
 	wsURL, err := client.getWebSocketURL()

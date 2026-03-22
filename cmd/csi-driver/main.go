@@ -63,15 +63,22 @@ func main() {
 	var mounter csi.Mounter = nil
 
 	if mode == csi.ControllerMode || mode == csi.AllMode {
-		xoaToken := os.Getenv("XOA_TOKEN")
 		xoaURL := os.Getenv("XOA_URL")
-		if xoaURL == "" || xoaToken == "" {
+		xoaToken := os.Getenv("XOA_TOKEN")
+		xoaUsername := os.Getenv("XOA_USERNAME")
+		xoaPassword := os.Getenv("XOA_PASSWORD")
+		if xoaURL == "" {
 			klog.Fatal("XOA_URL and XOA_TOKEN are required")
 		}
+		if xoaToken == "" && (xoaUsername == "" || xoaPassword == "") {
+			klog.Fatal("either XOA_USERNAME and XOA_PASSWORD or XOA_TOKEN are required")
+		}
 		xc, err := xoa.NewJSONRPCClient(xoa.ClientConfig{
-			BaseURL: xoaURL,
-			Token:   xoaToken,
-			Timeout: *xoaTimeout,
+			BaseURL:  xoaURL,
+			Token:    xoaToken,
+			Username: xoaUsername,
+			Password: xoaPassword,
+			Timeout:  *xoaTimeout,
 		})
 		if err != nil {
 			klog.Fatalf("failed to create XOA API client: %v", err)
