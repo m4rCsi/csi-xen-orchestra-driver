@@ -9,8 +9,8 @@ Create the secret in `kube-system` namespace:
 ```sh
 kubectl create secret generic csi-xen-orchestra-credentials \
   -n kube-system \
-  --from-literal=url="https://xoa.example.lan" \
-  --from-literal=token="<paste-your-xo-token>"
+  --from-literal=XOA_URL="https://xoa.example.lan" \
+  --from-literal=XOA_TOKEN="<paste-your-xo-token>"
 ```
 
 
