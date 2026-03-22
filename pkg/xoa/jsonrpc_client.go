@@ -32,7 +32,6 @@ import (
 // apiClient represents a Xen Orchestra WebSocket JSON-RPC client
 type jsonRPCClient struct {
 	baseURL string
-	token   string
 	config  ClientConfig
 
 	ctx    context.Context
@@ -40,6 +39,8 @@ type jsonRPCClient struct {
 
 	connMtx sync.Mutex
 	conn    *jsonrpc2.Conn
+
+	sessionToken string
 }
 
 // NewClient creates a new Xen Orchestra WebSocket JSON-RPC client
@@ -47,8 +48,8 @@ func NewJSONRPCClient(config ClientConfig) (*jsonRPCClient, error) {
 	if config.BaseURL == "" {
 		return nil, fmt.Errorf("base URL is required: %w", ErrInvalidArgument)
 	}
-	if config.Token == "" {
-		return nil, fmt.Errorf("authentication token is required: %w", ErrInvalidArgument)
+	if config.Token == "" && (config.Username == "" || config.Password == "") {
+		return nil, fmt.Errorf("authentication token or username and password are required: %w", ErrInvalidArgument)
 	}
 
 	// Set default values
@@ -60,7 +61,6 @@ func NewJSONRPCClient(config ClientConfig) (*jsonRPCClient, error) {
 
 	client := &jsonRPCClient{
 		baseURL: config.BaseURL,
-		token:   config.Token,
 		config:  config,
 		ctx:     ctx,
 		cancel:  cancel,
@@ -119,12 +119,24 @@ func (c *jsonRPCClient) connect(ctx context.Context) error {
 // authenticate performs authentication with the server
 func (c *jsonRPCClient) authenticate(ctx context.Context, conn *jsonrpc2.Conn) error {
 	log := klog.FromContext(ctx)
-	log.V(4).Info("Authenticating session with token...")
-	_, err := callRaw(ctx, conn, "session.signInWithToken", map[string]any{
-		"token": c.token,
-	})
-	if err != nil {
-		return fmt.Errorf("session.signInWithToken failed: %w", err)
+
+	if c.config.Token != "" {
+		log.V(4).Info("Authenticating session with token...")
+		_, err := callRaw(ctx, conn, "session.signInWithToken", map[string]any{
+			"token": c.config.Token,
+		})
+		if err != nil {
+			return fmt.Errorf("session.signInWithToken failed: %w", err)
+		}
+	} else if c.config.Username != "" && c.config.Password != "" {
+		log.V(4).Info("Authenticating session with username and password...")
+		_, err := callRaw(ctx, conn, "session.signIn", map[string]any{
+			"username": c.config.Username,
+			"password": c.config.Password,
+		})
+		if err != nil {
+			return fmt.Errorf("session.signIn failed: %w", err)
+		}
 	}
 
 	log.V(4).Info("Session successfully authenticated")

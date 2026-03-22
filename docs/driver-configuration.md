@@ -5,7 +5,7 @@ This page covers controller runtime flags and other requirements for the driver 
 ## Authentication with Xen Orchestra
 
 The driver needs access to the Xen Orchestra.
-Create the following secret in the kube-system namespace:
+Create the following secret in the kube-system namespace. Either a token or username and password is required:
 
 ```yaml
 apiVersion: v1
@@ -15,8 +15,14 @@ metadata:
   namespace: kube-system
 type: Opaque
 stringData:
-  url: https://xoa.example.lan
-  token: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  XOA_URL: https://xoa.example.lan
+
+  # either
+  XOA_TOKEN: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  
+  # or
+  XOA_USERNAME: xoa-username
+  XOA_PASSWORD: password
 ```
 
 Official docs on how to create a token: https://docs.xcp-ng.org/management/manage-at-scale/xo-api/#authentication
@@ -26,8 +32,8 @@ CLI example to create the secret directly:
 ```sh
 kubectl create secret generic csi-xen-orchestra-credentials \
   -n kube-system \
-  --from-literal=url="https://xoa.example.lan" \
-  --from-literal=token="<paste-your-xo-token>"
+  --from-literal=XOA_URL="https://xoa.example.lan" \
+  --from-literal=XOA_TOKEN="<paste-your-xo-token>"
 ```
 
 ### Configure secret name with Helm

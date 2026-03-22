@@ -55,6 +55,7 @@ func main() {
 		srUUID   = flag.String("sr-uuid", "", "Storage Repository UUID")
 		vmUUID   = flag.String("vm-uuid", "", "Virtual Machine UUID")
 	)
+	klog.InitFlags(nil)
 	flag.Parse()
 
 	if *command == "" {
@@ -68,20 +69,25 @@ func main() {
 			log.Fatal("-url flag is required")
 		}
 	}
-	if *token == "" {
+
+	var username string = os.Getenv("XOA_USERNAME")
+	var password string = os.Getenv("XOA_PASSWORD")
+
+	if *token == "" && (username == "" || password == "") {
 		if *token = os.Getenv("XOA_TOKEN"); *token == "" {
 			log.Fatal("-token flag is required")
 		}
 	}
 
 	// Initialize klog
-	klog.InitFlags(nil)
 	flag.Parse()
 
 	// Create client configuration
 	config := xoa.ClientConfig{
-		BaseURL: *baseURL,
-		Token:   *token,
+		BaseURL:  *baseURL,
+		Token:    *token,
+		Username: username,
+		Password: password,
 	}
 
 	// Create Xen Orchestra WebSocket JSON-RPC client
