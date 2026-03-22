@@ -1,2 +1,5 @@
 bin
 deploy
+charts
+docs
+examples
